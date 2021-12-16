@@ -14,6 +14,11 @@ pub enum RuntimeError {
         info: CompilerInfo,
     },
 
+    UnknownModuleErr {
+        undefined: String,
+        info: CompilerInfo,
+    },
+
     PackageSyntaxError {
         err: SyntaxError,
         info: CompilerInfo,
@@ -248,6 +253,20 @@ impl From<RuntimeError> for ErrorReport {
                 )],
                 None,
             ),
+
+			RuntimeError::UnknownModuleErr {
+                undefined,
+                info,
+            } => create_error(
+                info.clone(),
+                "Unknown imported module",
+                &[(
+                    info.position,
+                    &format!("Module '{}' could not be found", undefined.fg(b)),
+                )],
+                None,
+            ),
+
             RuntimeError::PackageSyntaxError { err, info } => {
                 let syntax_error = ErrorReport::from(err);
                 let mut labels = vec![(info.position, "Error when parsing this library/module")];

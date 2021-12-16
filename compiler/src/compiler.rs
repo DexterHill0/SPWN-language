@@ -32,6 +32,9 @@ use std::path::PathBuf;
 
 use crate::compiler_types::*;
 
+use libraries::libraries::get_module_type;
+use libraries::{Module};
+
 use ariadne::Color as TColor;
 use ariadne::Fmt;
 
@@ -81,37 +84,37 @@ pub fn compile_spwn(
     #[cfg(not(target_arch = "wasm32"))]
     let start_time = Instant::now();
 
-    if !notes.tag.tags.iter().any(|x| x.0 == "no_std") {
-        import_module(
-            &ImportType::Lib(STD_PATH.to_string()),
-            &mut start_context,
-            &mut globals,
-            start_info.clone(),
-            false,
-        )?;
+    // if !notes.tag.tags.iter().any(|x| x.0 == "no_std") {
+    //     import_module(
+    //         &ImportType::Lib(STD_PATH.to_string()),
+    //         &mut start_context,
+    //         &mut globals,
+    //         start_info.clone(),
+    //         false,
+    //     )?;
 
-        if let FullContext::Split(_, _) = start_context {
-            return Err(RuntimeError::CustomError(create_error(
-                start_info,
-                "The standard library can not split the context",
-                &[],
-                None,
-            )));
-        }
+    //     if let FullContext::Split(_, _) = start_context {
+    //         return Err(RuntimeError::CustomError(create_error(
+    //             start_info,
+    //             "The standard library can not split the context",
+    //             &[],
+    //             None,
+    //         )));
+    //     }
 
-        if let Value::Dict(d) = &globals.stored_values[start_context.inner().return_value] {
-            for (a, b, c) in d.iter().map(|(k, v)| (*k, *v, -1)) {
-                start_context.inner().new_redefinable_variable(a, b, c)
-            }
-        } else {
-            return Err(RuntimeError::CustomError(create_error(
-                start_info,
-                "The standard library must return a dictionary",
-                &[],
-                None,
-            )));
-        }
-    }
+    //     if let Value::Dict(d) = &globals.stored_values[start_context.inner().return_value] {
+    //         for (a, b, c) in d.iter().map(|(k, v)| (*k, *v, -1)) {
+    //             start_context.inner().new_redefinable_variable(a, b, c)
+    //         }
+    //     } else {
+    //         return Err(RuntimeError::CustomError(create_error(
+    //             start_info,
+    //             "The standard library must return a dictionary",
+    //             &[],
+    //             None,
+    //         )));
+    //     }
+    // }
 
     compile_scope(&statements, &mut start_context, &mut globals, start_info)?;
     if !statements.is_empty() {
@@ -1687,23 +1690,46 @@ pub fn import_module(
             return Ok(());
         }
     }
-    let built_in_path = match path {
-        ImportType::Script(a) => {
-            if let Some(mut p) = globals.built_in_path.clone() {
-                p.push(a);
-                p
-            } else {
-                a.clone()
-            }
-        }
-        ImportType::Lib(a) => {
-            let mut p = PathBuf::from(a);
-            p.push("lib.spwn");
-            p
-        }
+    // let built_in_path = match path {
+    //     ImportType::Script(a) => {
+    //         // if let Some(mut p) = globals.built_in_path.clone() {
+    //         //     p.push(a);
+    //         //     p
+    //         // } else {
+    //         //     a.clone()
+    //         // }
+    // 		a.clone()
+    //     }
+    //     ImportType::Lib(a) => {
+    //         let mut p = PathBuf::from(a);
+    //         p.push("lib.spwn");
+    //         p
+    //     }
+    // };
+    
+    let x = match get_module_type(path) {
+        Module::RustBuiltin(n) => None,
+        Module::SpwnBuiltin(n) => None,
+
+        #[cfg(not(target_arch = "wasm32"))]
+        Module::UserLibrary(n) => None,
+        #[cfg(not(target_arch = "wasm32"))]
+        Module::Script(n) => None,
+
+        #[cfg(target_arch = "wasm32")]
+        _ => {
+            return Err(RuntimeError::UnknownModuleErr {
+                undefined: (match path {
+                    ImportType::Script(n) => n.file_name().unwrap().to_str().unwrap().to_string(),
+                    ImportType::Lib(n) => n,
+                }),
+                info,
+            })
+        },
     };
 
-    let stored_built_in_path = globals.built_in_path.clone();
+
+
     #[cfg(not(target_arch = "wasm32"))]
     let (unparsed, module_path) = match get_import_path(path, globals, info.clone()) {
         Err(err) => {

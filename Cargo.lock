@@ -160,6 +160,7 @@ dependencies = [
  "include_dir",
  "internment",
  "itertools",
+ "libraries",
  "parser",
  "rand",
  "reqwest",
@@ -690,6 +691,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libraries"
+version = "0.0.7"
+dependencies = [
+ "include_dir",
+ "lazy_static",
+ "proc_macros",
+ "shared",
+]
+
+[[package]]
 name = "libssh2-sys"
 version = "0.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1013,6 +1024,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9f5105d4fdaab20335ca9565e106a5d9b82b6219b5ba735731124ac6711d23d"
 dependencies = [
  "unicode-xid",
+]
+
+[[package]]
+name = "proc_macros"
+version = "0.0.7"
+dependencies = [
+ "syn",
 ]
 
 [[package]]

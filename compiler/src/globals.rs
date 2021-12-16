@@ -66,7 +66,6 @@ pub struct Globals<'a> {
     pub OBJ_KEY_ID: LocalIntern<String>,
     pub OBJ_KEY_PATTERN: LocalIntern<String>,
     // the path to a potential executable built-in path
-    pub built_in_path: Option<PathBuf>,
     pub std_out: &'a mut dyn Write,
 
     pub BUILTIN_STORAGE: StoredValue,
@@ -189,7 +188,6 @@ impl<'a> Globals<'a> {
             ASSIGN_BUILTIN: LocalIntern::new(String::from("_assign_")),
             OBJ_KEY_ID: LocalIntern::new(String::from("id")),
             OBJ_KEY_PATTERN: LocalIntern::new(String::from("pattern")),
-            built_in_path: None,
             std_out,
         };
 

@@ -1,8 +1,2 @@
-#[no_level]
-
-
-let arr = [1, 5, 3, 2]
-arr.insert(-1, 7)
-$.print(arr)
-
-
+import gamescene
+import "a.spwn"

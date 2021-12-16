@@ -10,7 +10,9 @@ members = [
     "optimizer",
     "docgen",
     "spwn-web",
-    "pckp"
+    "pckp",
+	"proc_macros",
+	"libraries",
 ]
 
 [profile.dev]
