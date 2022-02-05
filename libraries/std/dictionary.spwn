@@ -23,7 +23,7 @@ impl @dictionary {
 			gold: 1000,
 			peanuts: 5,
 		}
-		$.assert(wares.keys() == ['apple', 'gold', 'peanuts'])
+		$.assert('apple' in wares.keys())
 	")]
 	(self) -> [@string] {
 		let ret = []
@@ -38,7 +38,7 @@ impl @dictionary {
 			gold: 1000,
 			peanuts: 5,
 		}
-		$.assert(wares.values() == [10, 1000, 5])
+		$.assert(wares.values().sort() == [5, 10, 1000])
 	")]
 	(self) -> [_] {
 		let ret = []
@@ -53,11 +53,7 @@ impl @dictionary {
 			gold: 1000,
 			peanuts: 5,
 		}
-		$.assert(wares.items() == [
-			['apple', 10],
-			['gold', 1000],
-			['peanuts', 5],
-		])
+		$.assert(['apple', 10] in wares.items())
 	")]
 	(self) -> [@array] {
 		let ret = []
@@ -72,11 +68,7 @@ impl @dictionary {
 			gold: 1000,
 		}
 		wares.set('peanuts', 5)
-		$.assert(wares == {
-			apple: 10,
-			gold: 1000,
-			peanuts: 5,
-		})
+		$.assert(wares.peanuts == 5)
 	")]
 	(self, key: @string, val) -> @NULL {
 		if key in self {
@@ -106,6 +98,18 @@ impl @dictionary {
 			}
 		}
 	},
+	delete: #[desc("Deletes an item from the dictionary."), example(u"
+		let wares = {
+			apple: 10,
+			gold: 1000,
+			peanuts: 5,
+		}
+		wares.delete('peanuts')
+
+		$.assert('peanuts' in wares == false)
+	")] (self, key: @string) -> @NULL {
+		if key in self { $.remove_index(self, key) }
+	},
 	clear: #[desc("Clears the dictionary."), example(u"
 		let wares = {
 			apple: 10,
@@ -126,14 +130,14 @@ impl @dictionary {
 			peanuts: 5,
 		}
 
-		$.assert(wares.contains(5))
+		$.assert(wares.contains_value(5))
 	")]
 	(self, value) -> @bool {
 		return self.values().contains(value)
 	},
 	map: #[desc("Calls a defined callback function on each key-value pair of a dictionary, and returns an array that contains the results."), example(u"
 		dict = {key1: 0, key2: 1, key3: 2}
-		$.assert(dict.map((k, v) => k[v]) == ['k', 'e', 'y'])
+		$.assert('k' in dict.map((k, v) => k[v]))
 	")]
 	(self, cb: (_, _) -> _) -> @array {
 		let output = [];

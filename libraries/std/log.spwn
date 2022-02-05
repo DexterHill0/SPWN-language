@@ -31,9 +31,9 @@ impl @runtime_log {
         }, delay = 1)
     ")](
         color: @chroma = @chroma::from_rgb(1,1,1),
-        fade_in: @number = 0.1,
-        hold: @number = 0.1,
-        fade_out: @number = 0.1,
+        fade_in: @number = 0.0,
+        hold: @number = 0.0,
+        fade_out: @number = 0.5,
     ) -> @NULL {
         -> BG.pulse(color, fade_in, hold, fade_out)
     },
@@ -63,19 +63,19 @@ impl @log {
         }
         log_time(label, instant - data.time_labels.get(label))
     },
-    time_end: #[desc("Logs the time between now and the start of the label and destroys it (it doesn't for now 💀)."), example(u"
+    time_end: #[desc("Logs the time between now and the start of the label and destroys it."), example(u"
         @log::time('huge loop')
 
         for i in 0..100000 {}
 
         @log::time_end('huge loop')
-    ")] (label = default) -> @NULL {
+    ", run_test = false)] (label = default) -> @NULL {
         instant = $.time()
         if !(label in data.time_labels) {
             throw "Label {} does not exist".fmt($.display(label))
         }
         log_time(label, instant - data.time_labels.get(label))
-        // how to remove a key from a dict?
+        data.time_labels.delete(label)
     },
     count: #[desc("Logs how many times the label got counted."), example(u"
         for i in 0..10 {

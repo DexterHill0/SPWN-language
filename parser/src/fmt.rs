@@ -223,7 +223,7 @@ impl SpwnFmt for StatementBody {
             //StatementBody::Definition(def) => format!("{}", def.fmt(ind)),
             StatementBody::Call(call) => call.fmt(ind),
             StatementBody::Expr(x) => x.fmt(ind),
-            StatementBody::TypeDef(x) => format!("type {}", x),
+            StatementBody::TypeDef { name, .. } => format!("type {}", name),
             StatementBody::Return(x) => match x {
                 Some(expr) => format!("return {}", expr.fmt(ind)),
                 None => "return".to_string(),
@@ -306,7 +306,7 @@ impl SpwnFmt for ValueBody {
                 c.symbol,
                 c.iterator.fmt(ind)
             ),
-            Switch(_, _) => todo!(),
+            Match(_, _) => todo!(),
             MacroPattern(_) => todo!(),
         }
     }

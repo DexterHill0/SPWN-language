@@ -158,7 +158,12 @@ fn xor(data: Vec<u8>, key: u8) -> Vec<u8> {
 }
 fn base_64_decrypt(encoded: Vec<u8>) -> Vec<u8> {
     let l = encoded.len();
-    base64::decode(String::from_utf8([encoded, b"=".repeat(l % 4)].concat()).unwrap().as_str()).unwrap()
+    base64::decode(
+        String::from_utf8([encoded, b"=".repeat(l % 4)].concat())
+            .unwrap()
+            .as_str(),
+    )
+    .unwrap()
 }
 
 use quick_xml::events::{BytesText, Event};
@@ -203,7 +208,7 @@ fn decrypt_savefile(mut sf: Vec<u8>) -> Result<Vec<u8>, String> {
         Ok(data)
     }
 }
-pub fn get_level_string(ls: Vec<u8>, level_name: Option<String>) -> Result<String, String> {
+pub fn get_level_string(ls: Vec<u8>, level_name: Option<&String>) -> Result<String, String> {
     //decrypting the savefile
     let content = decrypt_savefile(ls)?;
     let string_content = String::from_utf8_lossy(&content);
@@ -234,8 +239,8 @@ pub fn get_level_string(ls: Vec<u8>, level_name: Option<String>) -> Result<Strin
                         );
                     }
                 } else if k2_detected {
-                    if let Some(level_name) = level_name.clone() {
-                        if text == level_name {
+                    if let Some(level_name) = level_name {
+                        if text == *level_name {
                             level_detected = true
                         }
                     } else {

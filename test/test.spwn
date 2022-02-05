@@ -1,18 +1,14 @@
-extract obj_props
+$.print({} == {})
 
-let a = @set::new()
+$.print({'a': 10} == {'a': 10})
 
-$.print(a.is_empty())
-
-a.push(obj { GROUPS: 10g, X: 0, Y: 0 })
-
-$.print(a)
-
-a = a.replace(GROUPS, ==10g, 5g, 1g)
-
-$.print(a)
-
-a = a.with(EDITOR_LAYER_1, 5)
-
-$.print(a)
-
+let name_age = {
+    'Sophia': 34, 
+    'Romulus': 14, 
+    'Remus': 15, 
+}
+$.remove_index(name_age, 'Romulus')
+$.assert(name_age == {
+    'Sophia': 34, 
+    'Remus': 15, 
+})

@@ -56,7 +56,7 @@ impl @textdisplay {
                     SCALING: 0.7,
                 })
 
-                cblock = switch order[ch] {
+                cblock = match order[ch] {
                     =="I": wincon[0],
                     =="N": wincon[1],
                     =="C": wincon[2],
@@ -168,7 +168,7 @@ impl @textdisplay {
         //         }
         //         letter.item.if_is(EQUAL_TO, 0, !{
         //             wait()
-        //             if speed > 1  { supress_signal(0.1) }
+        //             if speed > 1  { suppress_signal(0.1) }
         //             -> return
         //         })
         //     }

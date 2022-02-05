@@ -40,6 +40,7 @@ pub struct FunctionId {
 }
 
 pub type SyncPartId = usize;
+#[derive(Clone)]
 pub struct SyncGroup {
     pub parts: Vec<SyncPartId>,
     pub groups_used: Vec<ArbitraryId>, // groups that are already used by this sync group, and can be reused in later parts
@@ -423,7 +424,7 @@ pub fn execute_macro(
                                 });
                             }
                         };
-                        if arg_def.as_ref {
+                        if arg_def.arg_type == ast::ArgType::Ref {
                             new_variables.insert(
                                 *name,
                                 vec![VariableData {
@@ -440,7 +441,7 @@ pub fn execute_macro(
                                         arg_values[i],
                                         globals,
                                         context.start_group,
-                                        true,
+                                        arg_def.arg_type != ast::ArgType::Mut,
                                         CodeArea {
                                             pos: arg_def.position,
                                             file: m.def_file,
@@ -510,7 +511,7 @@ pub fn execute_macro(
                             });
                         }
                     };
-                    if m.args[def_index].as_ref {
+                    if m.args[def_index].arg_type == ast::ArgType::Ref {
                         new_variables.insert(
                             m.args[def_index].name,
                             vec![VariableData {
@@ -527,7 +528,7 @@ pub fn execute_macro(
                                     arg_values[i],
                                     globals,
                                     context.start_group,
-                                    true,
+                                    m.args[def_index].arg_type != ast::ArgType::Mut,
                                     CodeArea {
                                         pos: m.args[def_index].position,
                                         file: m.def_file,
@@ -575,7 +576,7 @@ Should be used like this: value.macro(arguments)",
                                 *default,
                                 globals,
                                 context.start_group,
-                                true,
+                                arg.arg_type != ast::ArgType::Mut,
                                 CodeArea {
                                     pos: arg.position,
                                     file: m.def_file,

@@ -42,7 +42,7 @@ pub enum StatementBody {
     Expr(Expression),
     Definition(Definition),
 
-    TypeDef(String),
+    TypeDef { name: String, attr: Attribute },
 
     Return(Option<Expression>),
     Impl(Implementation),
@@ -91,7 +91,7 @@ pub enum ValueBody {
     Expression(Expression),
     Str(StrInner),
     Import(ImportType, bool),
-    Switch(Expression, Vec<Case>),
+    Match(Expression, Vec<Case>),
     Array(Vec<ArrayDef>),
     ListComp(Comprehension),
     Obj(ObjectLiteral),
@@ -144,7 +144,7 @@ pub struct StrInner {
 #[derive(Clone, PartialEq, Debug)]
 pub enum StringFlags {
     Raw,
-    Unindent
+    Unindent,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -243,11 +243,24 @@ impl Attribute {
         }
     }
 
-    pub fn get_example(&self) -> Option<String> {
+    pub fn get_example(&self, testable: bool) -> Option<String> {
         if let Some(args) = self.get("example") {
             if args.is_empty() {
                 None
             } else {
+                if testable && args.len() > 1 {
+                    if let Some(s) = args[1].symbol {
+                        if s.as_ref() == "run_test" {
+                            if let &ValueBody::Bool(b) = &args[1].value.values[0].value.body {
+                                if !b {
+                                    return None;
+                                }
+                            }
+                        } else {
+                            panic!("expected run_test as second argument");
+                        }
+                    }
+                }
                 match &args[0].value.values[0].value.body {
                     ValueBody::Str(s) => Some(s.inner.trim().to_string()),
                     val => Some(val.fmt(0)),
@@ -343,13 +356,19 @@ pub struct Native {
     pub args: Vec<Argument>,
 }*/
 //     name     def value     props     type ind.     location in file     is reference
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ArgType {
+    Ref,
+    Mut,
+    Const,
+}
 pub type ArgDef = (
     LocalIntern<String>,
     Option<Expression>,
     Attribute,
     Option<Expression>,
     FileRange,
-    bool,
+    ArgType,
 );
 #[derive(Clone, PartialEq, Debug)]
 pub struct Macro {
@@ -387,7 +406,7 @@ pub struct Case {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct Switch {
+pub struct Match {
     pub value: Expression,
     pub cases: Vec<Case>,
 }

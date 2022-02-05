@@ -2,6 +2,7 @@
 let constants = import "constants.spwn"
 
 //type implementations
+import "counter.spwn"
 import "group.spwn"
 import "color.spwn"
 import "item.spwn"
@@ -10,7 +11,6 @@ import "array.spwn"
 import "object.spwn"
 import "dictionary.spwn"
 import "string.spwn"
-import "counter.spwn"
 import "fileio.spwn"
 import "regex.spwn"
 import "number.spwn"
@@ -37,13 +37,14 @@ return {
     EULER: constants.EULER,
 
     counter: @counter::new,
-    on: @event::on,
+    on: (event: @event, function, suppress = true) => event.on(function, suppress = suppress), // nobody wants to do anything against this 😭😭😭
     obj_props: constants.obj_props,
     obj_ids: constants.obj_ids,
     open: @file::new,
     regex: @regex::new,
     rgb: @chroma::from_rgb,
     rgb8: @chroma::from_rgb8,
+    hex: @chroma::from_hex,
     hsv: @chroma::from_hsv,
     hsv2: @chroma::from_hsv2,
     blend_modes: chroma.BLEND_MODES,

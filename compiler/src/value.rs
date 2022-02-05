@@ -86,7 +86,7 @@ pub struct MacroArgDef {
     pub attribute: ast::Attribute,
     pub pattern: Option<StoredValue>,
     pub position: FileRange,
-    pub as_ref: bool,
+    pub arg_type: ast::ArgType,
 }
 // impl Macro {
 //     pub fn get_arg_area(&self) -> CodeArea {
@@ -226,7 +226,7 @@ pub fn default_value_equality(
             }
             // check all keys are equal
             if d1.keys().cloned().collect::<FnvHashSet<_>>()
-                == d2.keys().cloned().collect::<FnvHashSet<_>>()
+                != d2.keys().cloned().collect::<FnvHashSet<_>>()
             {
                 set_return_bool(false, globals, contexts);
                 return Ok(());
@@ -318,7 +318,7 @@ pub fn strict_value_equality(val1: StoredValue, val2: StoredValue, globals: &Glo
         (a, b) => a == b,
     }
 }
-
+#[macro_export]
 macro_rules! type_id {
     (group) => {
         0
@@ -647,7 +647,7 @@ impl Value {
                                 // TODO: make sure it always sets the return value
                                 full_context.reset_return_vals(globals);
 
-                                if a_val.len() == 0 {
+                                if a_val.is_empty() {
                                     (*full_context.inner()).return_value = store_const_value(
                                         Value::Bool(true),
                                         globals,
@@ -706,7 +706,7 @@ impl Value {
                                 if let Some(pat_stored) = m_arg.pattern {
                                     match &convert_type(&globals.stored_values[pat_stored].clone(), type_id!(pattern), info, globals, full_context.inner())?  {
                                         Value::Pattern(p) => {
-                                            let matches = args[i].in_pat(p, globals)?;
+                                            let matches = p.in_pat(&args[i], globals)?;
                                             if !matches {
                                                 is_matching = false;
                                                 break;
@@ -720,7 +720,7 @@ impl Value {
                                 if let Some(ret_stored) = m.ret_pattern {
                                     match &convert_type(&globals.stored_values[ret_stored].clone(), type_id!(pattern), info, globals, full_context.inner())? {
                                         Value::Pattern(p) => {
-                                            is_matching = (*ret).in_pat(p, globals)?;
+                                            is_matching = p.in_pat(&ret, globals)?;
                                             
                                         },
                                         _ => unreachable!()
@@ -847,6 +847,10 @@ impl Value {
             }
             Value::Dict(dict_in) => {
                 let mut out = String::new();
+                globals.push_new_preserved();
+                for (_, v) in dict_in.iter() {
+                    globals.push_preserved_val(*v);
+                }
 
                 let mut d = dict_in.clone();
                 if let Some(n) = d.get(&globals.TYPE_MEMBER_NAME) {
@@ -875,10 +879,21 @@ impl Value {
                 }
 
                 out += "}"; //why do i have to do this twice? idk
-
+                globals.pop_preserved();
                 out
             }
             Value::Macro(m) => {
+                globals.push_new_preserved();
+                for arg in &m.args {
+                    if let Some(v) = &arg.pattern {
+                        globals.push_preserved_val(*v);
+                    }
+                    if let Some(v) = &arg.default {
+                        globals.push_preserved_val(*v);
+                    }
+
+                }
+
                 let mut out = String::from("(");
                 if !m.args.is_empty() {
                     for arg in m.args.iter() {
@@ -900,6 +915,7 @@ impl Value {
                     out.pop();
                     out.pop();
                 }
+                globals.pop_preserved();
                 out + ") { /* ... */ }"
             }
             Value::Str(s) => format!("'{}'", s),
@@ -907,6 +923,10 @@ impl Value {
                 if a.is_empty() {
                     "[]".to_string()
                 } else {
+                    globals.push_new_preserved();
+                    for v in a.iter() {
+                        globals.push_preserved_val(*v);
+                    }
                     let mut out = String::from("[");
                     for val in a {
                         out += &display_inner(&globals.stored_values[*val].clone(), globals)?;
@@ -915,7 +935,7 @@ impl Value {
                     out.pop();
                     out.pop();
                     out += "]";
-
+                    globals.pop_preserved();
                     out
                 }
             }
@@ -1424,7 +1444,7 @@ pub fn macro_to_value(
                 attribute: attr.clone(),
                 pattern: pat,
                 position: *pos,
-                as_ref: *as_ref,
+                arg_type: *as_ref,
             });
         }
 
@@ -2541,7 +2561,7 @@ impl VariableFuncs for ast::Variable {
                     globals.pop_preserved();
                 }
 
-                ast::ValueBody::Switch(expr, cases) => {
+                ast::ValueBody::Match(expr, cases) => {
                     expr.eval(full_context, globals, info.clone(), constant)?;
 
                     for full_context in full_context.iter() {

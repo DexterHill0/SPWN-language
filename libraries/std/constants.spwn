@@ -1,6 +1,12 @@
 #[no_std, cache_output]
 
+#[desc("A type of comparison between item IDs and numbers. To get a `@comparison` value, use one of these constants: `EQUAL_TO`, `LARGER_THAN` or `SMALLER_THAN`")]
 type @comparison
+
+#[desc(u"
+A type of easing used when when moving or rotating objects at runtime. To get a `@easing_type` value, use one of these constants:
+`NONE`, `EASE_IN_OUT`, `EASE_IN`, `EASE_OUT`, `ELASTIC_IN_OUT`, `ELASTIC_IN`, `ELASTIC_OUT`, `BOUNCE_IN_OUT`, `BOUNCE_IN`, `BOUNCE_OUT`, `EXPONENTIAL_IN_OUT`, `EXPONENTIAL_IN`, `EXPONENTIAL_OUT`, `SINE_IN_OUT`, `SINE_IN`, `SINE_OUT`, `BACK_IN_OUT`, `BACK_IN`, or `BACK_OUT`
+")]
 type @easing_type
 
 //comparison
@@ -20,7 +26,7 @@ ok = (id: @number, pat: @pattern | @type_indicator, name: @string) {
 
 
 @easing_type::_display_ = (self) {
-    return switch self.id {
+    return match self.id {
         ==0: "NONE",
         ==1: "EASE_IN_OUT",
         ==2: "EASE_IN",
@@ -45,7 +51,7 @@ ok = (id: @number, pat: @pattern | @type_indicator, name: @string) {
 }
 
 @comparison::_display_ = (self) {
-    return switch self.id {
+    return match self.id {
         ==0: "EQUAL_TO",
         ==1: "LARGER_THAN",
         ==2: "SMALLER_THAN",
