@@ -22,10 +22,12 @@ use std::time::SystemTime;
 use crate::value::*;
 use crate::value_storage::*;
 
+pub use crate::builtin::types::*;
+
 use std::io::stdout;
 use std::io::Write;
 
-use std::collections::hash_map::{DefaultHasher, HashMap};
+use std::collections::hash_map::{DefaultHasher};
 
 // BUILT IN STD
 use include_dir::{Dir, File};
@@ -98,61 +100,6 @@ pub enum Id {
     Specific(SpecificId),
     Arbitrary(ArbitraryId), // will be given specific ids at the end of compilation
 }
-
-macro_rules! id_default_methods {
-    ($id_struct:ident, $short_name:expr) => {
-        impl $id_struct {
-            pub fn new(id: SpecificId) -> $id_struct {
-                //creates new specific group
-                $id_struct {
-                    id: Id::Specific(id),
-                }
-            }
-
-            pub fn next_free(counter: &mut ArbitraryId) -> $id_struct {
-                //creates new specific group
-                (*counter) += 1;
-                $id_struct {
-                    id: Id::Arbitrary(*counter),
-                }
-            }
-        }
-
-        impl std::fmt::Debug for $id_struct {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                match self.id {
-                    Id::Specific(n) => f.write_str(&format!("{}{}", n, $short_name)),
-                    Id::Arbitrary(n) => f.write_str(&format!("{}?{}", n, $short_name)),
-                }
-            }
-        }
-    };
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Group {
-    pub id: Id,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Color {
-    pub id: Id,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Block {
-    pub id: Id,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Item {
-    pub id: Id,
-}
-
-id_default_methods!(Group, "g");
-id_default_methods!(Color, "c");
-id_default_methods!(Block, "b");
-id_default_methods!(Item, "i");
 
 impl Value {
     pub fn member(
@@ -991,7 +938,7 @@ $.add(obj {
 
         match mode {
             ObjectMode::Object => {
-                if !ignore_context && context.start_group.id != Id::Specific(0) {
+                if !ignore_context && context.start_group.id != 0 {
                     return Err(RuntimeError::BuiltinError {
                         builtin, // objects cant be added dynamically, of course
                         message: String::from(

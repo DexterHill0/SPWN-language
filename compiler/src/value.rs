@@ -23,6 +23,11 @@ use std::hash::Hash;
 
 use errors::RuntimeError;
 
+pub type Error = String;
+pub trait TypeName<T> {
+    const type_name: &'static str = std::any::type_name::<T>();
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Group(Group),
@@ -43,6 +48,12 @@ pub enum Value {
     Range(i32, i32, usize), //start, end, step
     Pattern(Pattern),
     Null,
+}
+
+impl Value {
+    fn to_type() {
+        // return type
+    }
 }
 
 pub type Slice = (Option<isize>, Option<isize>, Option<isize>);
@@ -387,6 +398,10 @@ macro_rules! type_id {
 
 pub(crate) use type_id;
 
+fn type_id_val<T: ?Sized + std::any::Any>(val: &T) -> std::any::TypeId {
+    std::any::TypeId::of::<T>()
+}
+
 impl Value {
     //numeric representation of value
     pub fn to_num(&self, globals: &Globals) -> TypeId {
@@ -420,6 +435,36 @@ impl Value {
             Value::Range(_, _, _) => type_id!(range),
             Value::Pattern(_) => type_id!(pattern),
         }
+    }
+
+    pub fn type_name(&self) -> String {
+        let type_id = match self {
+            Value::Group(v) => type_id_val(v),
+            Value::Color(v) => type_id_val(v),
+            Value::Block(v) => type_id_val(v),
+            Value::Item(v) => type_id_val(v),
+            Value::Number(v) => type_id_val(v),
+            Value::Bool(v) => type_id_val(v),
+            Value::TriggerFunc(v) => type_id_val(v),
+            Value::Dict(v) => type_id_val(v),
+            Value::Macro(v) => type_id_val(v),
+            Value::Str(v) => type_id_val(v),
+            Value::Array(v) => type_id_val(v),
+            Value::BuiltinFunction(v) => type_id_val(v),
+            Value::TypeIndicator(v) => type_id_val(v),
+            Value::Pattern(v) => type_id_val(v),
+
+            _ => type_id_val(&String::new()),
+            // Value::Null => type_id_val(v), // `None`?
+            // Value::Range(s, e, st) => type_id_val(v), // convert to tuple
+            // Value::Builtins => type_id_val(v), // struct?
+            // Value::Obj(v, m) => type_id_val(v), // make tuple?
+        };
+
+        crate::builtin::types::DEFAULT_TYPES
+            .get(&type_id)
+            .expect("type_name() called on non-builtin type!")
+            .name
     }
 
     // pub fn direct_references(&self) -> Vec<StoredValue> {
