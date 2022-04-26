@@ -144,6 +144,7 @@ impl Constructor {
 
 
 ////////////////////////////////////////////////////////////////////
+#[derive(Clone)]
 pub struct Type {
     pub name: String,
     pub type_id: TypeId,

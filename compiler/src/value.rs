@@ -24,9 +24,9 @@ use std::hash::Hash;
 use errors::RuntimeError;
 
 pub type Error = String;
-pub trait TypeName<T> {
-    const type_name: &'static str = std::any::type_name::<T>();
-}
+// pub trait TypeName<T> {
+//     const type_name: &'static str = std::any::type_name::<T>();
+// }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -48,12 +48,6 @@ pub enum Value {
     Range(i32, i32, usize), //start, end, step
     Pattern(Pattern),
     Null,
-}
-
-impl Value {
-    fn to_type() {
-        // return type
-    }
 }
 
 pub type Slice = (Option<isize>, Option<isize>, Option<isize>);
@@ -398,7 +392,7 @@ macro_rules! type_id {
 
 pub(crate) use type_id;
 
-fn type_id_val<T: ?Sized + std::any::Any>(val: &T) -> std::any::TypeId {
+fn type_id_val<T: ?Sized + std::any::Any>(_: &T) -> std::any::TypeId {
     std::any::TypeId::of::<T>()
 }
 
@@ -462,9 +456,10 @@ impl Value {
         };
 
         crate::builtin::types::DEFAULT_TYPES
-            .get(&type_id)
-            .expect("type_name() called on non-builtin type!")
-            .name
+			.lock()
+			.unwrap()
+            .get(&type_id).expect("type_name() called on non-builtin type!")
+            .name.clone()
     }
 
     // pub fn direct_references(&self) -> Vec<StoredValue> {
@@ -849,36 +844,23 @@ impl Value {
         mut display_inner: F,
     ) -> Result<String, E>
     where
+		Self: std::fmt::Debug,
         F: FnMut(&Self, &mut Globals) -> Result<String, E>,
     {
+
+		//TODO: Remove match once all derive Debug
         Ok(match self {
             Value::Group(g) => {
-                (if let Id::Specific(id) = g.id {
-                    id.to_string()
-                } else {
-                    "?".to_string()
-                }) + "g"
+               format!("{:?}", g)
             }
             Value::Color(c) => {
-                (if let Id::Specific(id) = c.id {
-                    id.to_string()
-                } else {
-                    "?".to_string()
-                }) + "c"
+                format!("{:?}", c)
             }
             Value::Block(b) => {
-                (if let Id::Specific(id) = b.id {
-                    id.to_string()
-                } else {
-                    "?".to_string()
-                }) + "b"
+                format!("{:?}", b)
             }
             Value::Item(i) => {
-                (if let Id::Specific(id) = i.id {
-                    id.to_string()
-                } else {
-                    "?".to_string()
-                }) + "i"
+                format!("{:?}", i)
             }
             Value::Number(n) => n.to_string(),
             Value::Bool(b) => b.to_string(),
@@ -1114,9 +1096,9 @@ pub fn convert_type(
         (Value::Number(n), type_id!(number)) => Value::Number(*n),
         (Value::Number(n), type_id!(bool)) => Value::Bool(*n != 0.0),
 
-        (Value::Group(g), type_id!(number)) => Value::Number(match g.id {
-            Id::Specific(n) => n as f64,
-            _ => return Err(RuntimeError::CustomError(create_error(
+        (Value::Group(g), type_id!(number)) => Value::Number(match g.arbitrary {
+            false => g.id as f64,
+            true => return Err(RuntimeError::CustomError(create_error(
                 info.clone(),
                 "This group isn't known at this time, and can therefore not be converted to a number!",
                 &[],
@@ -1126,33 +1108,33 @@ pub fn convert_type(
         }),
         
 
-        (Value::Color(g), type_id!(number)) => Value::Number(match g.id {
-            Id::Specific(n) => n as f64,
-            _ => return Err(RuntimeError::CustomError(create_error(
+        (Value::Color(g), type_id!(number)) => Value::Number(match g.arbitrary {
+            false => g.id as f64,
+            true => return Err(RuntimeError::CustomError(create_error(
                 info.clone(),
-                "This color isn't known at this time, and can therefore not be converted to a number!",
+                "This group isn't known at this time, and can therefore not be converted to a number!",
                 &[],
                 None,
             ))) 
             
         }),
 
-        (Value::Block(g), type_id!(number)) => Value::Number(match g.id {
-            Id::Specific(n) => n as f64,
-            _ => return Err(RuntimeError::CustomError(create_error(
+        (Value::Block(g), type_id!(number)) => Value::Number(match g.arbitrary {
+            false => g.id as f64,
+            true => return Err(RuntimeError::CustomError(create_error(
                 info.clone(),
-                "This block ID isn't known at this time, and can therefore not be converted to a number!",
+                "This group isn't known at this time, and can therefore not be converted to a number!",
                 &[],
                 None,
             ))) 
             
         }),
 
-        (Value::Item(g), type_id!(number)) => Value::Number(match g.id {
-            Id::Specific(n) => n as f64,
-            _ => return Err(RuntimeError::CustomError(create_error(
+        (Value::Item(g), type_id!(number)) => Value::Number(match g.arbitrary {
+            false => g.id as f64,
+            true => return Err(RuntimeError::CustomError(create_error(
                 info.clone(),
-                "This item ID isn't known at this time, and can therefore not be converted to a number!",
+                "This group isn't known at this time, and can therefore not be converted to a number!",
                 &[],
                 None,
             ))) 
@@ -1599,28 +1581,28 @@ impl VariableFuncs for ast::Variable {
                         match id.class_name {
                             IdClass::Group => {
                                 if id.unspecified {
-                                    Value::Group(Group::next_free(&mut globals.closed_groups))
+                                    Value::Group(Group::next_free(globals))
                                 } else {
                                     Value::Group(Group::new(id.number))
                                 }
                             }
                             IdClass::Color => {
                                 if id.unspecified {
-                                    Value::Color(Color::next_free(&mut globals.closed_colors))
+                                    Value::Color(Color::next_free(globals))
                                 } else {
                                     Value::Color(Color::new(id.number))
                                 }
                             }
                             IdClass::Block => {
                                 if id.unspecified {
-                                    Value::Block(Block::next_free(&mut globals.closed_blocks))
+                                    Value::Block(Block::next_free(globals))
                                 } else {
                                     Value::Block(Block::new(id.number))
                                 }
                             }
                             IdClass::Item => {
                                 if id.unspecified {
-                                    Value::Item(Item::next_free(&mut globals.closed_items))
+                                    Value::Item(Item::next_free(globals))
                                 } else {
                                     Value::Item(Item::new(id.number))
                                 }

@@ -185,7 +185,7 @@ impl<'a> std::ops::IndexMut<ObjPtr> for Triggerlist<'a> {
     }
 }
 
-pub fn get_role(obj: &GdObj, toggle_groups: &ToggleGroups) -> TriggerRole {
+pub fn get_role(obj: &GdObj, _toggle_groups: &ToggleGroups) -> TriggerRole {
     if let Some(ObjParam::Number(obj_id)) = obj.params.get(&1) {
         let mut hd = false;
         if let Some(ObjParam::Bool(hd_val)) = obj.params.get(&103) {
@@ -194,7 +194,7 @@ pub fn get_role(obj: &GdObj, toggle_groups: &ToggleGroups) -> TriggerRole {
         match *obj_id as u16 {
             obj_ids::SPAWN => {
                 if let Some(ObjParam::Group(Group {
-                    id: Id::Specific(_),
+                    arbitrary: false, ..
                 })) = obj.params.get(&obj_props::TARGET)
                 {
                     TriggerRole::Output
@@ -219,7 +219,7 @@ pub fn get_role(obj: &GdObj, toggle_groups: &ToggleGroups) -> TriggerRole {
             }
             obj_ids::TOUCH => {
                 if let Some(ObjParam::Group(g)) = obj.params.get(&obj_props::TARGET) {
-                    if let Id::Specific(_) = g.id {
+                    if !g.arbitrary {
                         // might interact with triggers in the editor
                         TriggerRole::Output
                     } else {
@@ -237,7 +237,7 @@ pub fn get_role(obj: &GdObj, toggle_groups: &ToggleGroups) -> TriggerRole {
                     // will toggle a group off
                     TriggerRole::Output
                 } else if let Some(ObjParam::Group(g)) = obj.params.get(&obj_props::TARGET) {
-                    if let Id::Specific(_) = g.id {
+                    if !g.arbitrary {
                         // might interact with triggers in the editor
                         TriggerRole::Output
                     } else {
@@ -259,6 +259,4 @@ pub fn get_role(obj: &GdObj, toggle_groups: &ToggleGroups) -> TriggerRole {
     }
 }
 
-pub const NO_GROUP: Group = Group {
-    id: Id::Specific(0),
-};
+pub const NO_GROUP: Group = Group { id: 0, arbitrary: false };

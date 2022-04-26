@@ -446,7 +446,7 @@ pub fn merge_contexts(
         }
     }
 
-    let new_group = Group::next_free(&mut globals.closed_groups);
+    let new_group = Group::next_free(globals);
     //add spawn triggers
     let mut add_spawn_trigger = |context: &Context| {
         let mut params = FnvHashMap::default();

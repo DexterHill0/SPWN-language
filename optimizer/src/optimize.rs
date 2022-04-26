@@ -1,4 +1,4 @@
-use compiler::builtins::{Group, Id};
+use compiler::builtins::{Group};
 use compiler::compiler_types::{FunctionId, TriggerOrder};
 use parser::ast::ObjectMode;
 
@@ -100,14 +100,13 @@ pub fn optimize(
     group_toggling::group_toggling(&mut network, &mut objects, &reserved, &mut closed_group);
     //dbg!(&network);
 
-    let zero_group = Group {
-        id: Id::Specific(0),
-    };
+    let zero_group = Group::new(0);
+
     if let Some(gang) = network.map.get(&zero_group) {
         if gang.triggers.len() > 1 {
             closed_group += 1;
             let new_start_group = Group {
-                id: Id::Arbitrary(closed_group),
+                id: closed_group, arbitrary: true,
             };
 
             let mut swaps = Swaps::default();
@@ -136,7 +135,7 @@ pub fn optimize(
 }
 
 pub fn is_start_group(g: Group, reserved: &ReservedIds) -> bool {
-    matches!(g.id, Id::Specific(_)) || reserved.object_groups.contains(&g.id)
+    !g.arbitrary || reserved.object_groups.contains(&g.id)
 }
 
 #[derive(Default)]

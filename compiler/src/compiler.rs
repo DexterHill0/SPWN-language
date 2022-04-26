@@ -394,12 +394,10 @@ pub fn compile_scope(
             }
 
             Impl(imp) => {
-                let message = "cannot run impl statement in a trigger function context, consider moving it to the start of your script.".to_string();
-
                 if let FullContext::Single(c) = &contexts {
-                    if c.start_group.id != Id::Specific(0) {
+                    if c.start_group.id != 0 || c.start_group.arbitrary {
                         return Err(RuntimeError::ContextChangeError {
-                            message,
+                            message: "cannot run impl statement in a trigger function context, consider moving it to the start of your script.".to_string(),
                             info,
                             context_changes: c.fn_context_change_stack.clone(),
                         });
@@ -426,7 +424,7 @@ pub fn compile_scope(
 
                 let (c, typ) = contexts.inner_value();
 
-                if c.start_group.id != Id::Specific(0) {
+                if c.start_group.id != 0 || c.start_group.arbitrary {
                     return Err(RuntimeError::ContextChangeError {
                         message: "impl type changes the context".to_string(),
                         info,
@@ -1239,7 +1237,7 @@ pub fn do_assignment(
 
                                 //pick a start group
                                 let start_group =
-                                    Group::next_free(&mut globals.closed_groups);
+                                    Group::next_free(globals);
                                 //store value
                                 globals.stored_values[storage] =
                                     Value::TriggerFunc(TriggerFunction { start_group });

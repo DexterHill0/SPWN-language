@@ -68,7 +68,7 @@ macro_rules! tuple_value_list {
             {
                 Ok((
                     $(
-                        $name::from_value(values[$count])?,
+                        $name::from_value(values[$count].clone())?,
                     )*
                 ))
             }

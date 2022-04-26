@@ -43,7 +43,7 @@ pub type SyncPartId = usize;
 #[derive(Clone)]
 pub struct SyncGroup {
     pub parts: Vec<SyncPartId>,
-    pub groups_used: Vec<ArbitraryId>, // groups that are already used by this sync group, and can be reused in later parts
+    pub groups_used: Vec<Id>, // groups that are already used by this sync group, and can be reused in later parts
 }
 
 pub fn handle_operator(
@@ -841,7 +841,7 @@ impl ToTriggerFunc for ast::CompoundStatement {
             let start_group = if let Some(g) = start_group {
                 g
             } else {
-                Group::next_free(&mut globals.closed_groups)
+                Group::next_free(globals)
             };
 
             full_context.inner().next_fn_id(globals);

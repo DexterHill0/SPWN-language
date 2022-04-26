@@ -35,7 +35,7 @@ impl std::fmt::Debug for Item {
     }
 }
 
-pub fn init(globals: &mut Globals) -> TypeBuilder<Item> {
+pub fn init() -> TypeBuilder<Item> {
     let ty = TypeBuilder::<Item>::name("item")
         .set_constructor(|id, arbitrary| Item { id, arbitrary });
     ty

@@ -1,5 +1,5 @@
 use compiler::{
-    builtins::{Group, Id},
+    builtins::{Group},
     leveldata::ObjParam,
 };
 
@@ -63,7 +63,7 @@ fn check_for_dead_code<'a>(
 
     if trigger.role == TriggerRole::Output {
         if let Some(ObjParam::Group(Group {
-            id: i @ Id::Arbitrary(_),
+            id: i, arbitrary: true,
         })) = objects[trigger.obj].0.params.get(&obj_props::TARGET)
         {
             // if let Some(ObjParam::Number(id)) = objects[trigger.obj].0.params.get(&1) {

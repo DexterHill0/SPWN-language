@@ -1,11 +1,14 @@
 // useful things for dealing with gd level data
 
 use crate::builtins::*;
-use crate::compiler_types::FunctionId;
+use crate::compiler_types::{FunctionId, TypeId};
 use crate::context::Context;
 use fnv::{FnvHashMap, FnvHashSet};
 use parser::ast::ObjectMode;
 use std::hash::Hash;
+use std::collections::hash_set::SymmetricDifference;
+use std::hash::BuildHasherDefault;
+use fnv::FnvHasher;
 
 pub struct TriggerOrder(f32);
 
@@ -49,17 +52,7 @@ impl std::cmp::PartialOrd for GdObj {
                             return (*n1).partial_cmp(n2)
                         }
                         (ObjParam::Group(g1), ObjParam::Group(g2)) => {
-                            let num1 = match g1.id {
-                                Id::Arbitrary(n) => n,
-                                Id::Specific(n) => n,
-                            };
-
-                            let num2 = match g2.id {
-                                Id::Arbitrary(n) => n,
-                                Id::Specific(n) => n,
-                            };
-
-                            return num1.partial_cmp(&num2);
+                            return g1.id.partial_cmp(&g2.id);
                         }
                         (_, _) => (),
                     }
@@ -75,12 +68,12 @@ use std::fmt;
 impl fmt::Display for ObjParam {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ObjParam::Group(Group { id })
-            | ObjParam::Color(Color { id })
-            | ObjParam::Block(Block { id })
-            | ObjParam::Item(Item { id }) => match id {
-                Id::Specific(id) => write!(f, "{}", id),
-                _ => write!(f, "0"),
+            ObjParam::Group(Group { id, arbitrary })
+            | ObjParam::Color(Color { id, arbitrary })
+            | ObjParam::Block(Block { id, arbitrary })
+            | ObjParam::Item(Item { id, arbitrary }) => match arbitrary {
+                false => write!(f, "{}", id),
+                true => write!(f, "0"),
             },
             ObjParam::Number(n) => {
                 if (n.round() - n).abs() < 0.001 {
@@ -95,8 +88,8 @@ impl fmt::Display for ObjParam {
                 let mut out = String::new();
 
                 for g in list {
-                    if let Id::Specific(id) = g.id {
-                        out += &(id.to_string() + ".")
+                    if !g.arbitrary {
+                        out += &(g.id.to_string() + ".")
                     } else {
                         out += "0."
                     };
@@ -128,7 +121,9 @@ impl GdObj {
     }
 }
 
-pub fn get_used_ids(ls: &str) -> [FnvHashSet<u16>; 4] {
+type SpecificIds = [FnvHashSet<u16>; 4];
+
+pub fn get_used_ids(ls: &str) -> SpecificIds {
     let mut out = [
         FnvHashSet::<u16>::default(),
         FnvHashSet::<u16>::default(),
@@ -206,15 +201,12 @@ const MAX_HEIGHT: u16 = 40;
 const DELTA_X: u16 = 1;
 
 pub const SPWN_SIGNATURE_GROUP: Group = Group {
-    id: Id::Specific(1001),
+    id: 1001, arbitrary: false
 };
 //use crate::ast::ObjectMode;
 
 pub fn remove_spwn_objects(file_content: &mut String) {
-    let spwn_group = match SPWN_SIGNATURE_GROUP.id {
-        Id::Specific(n) => n.to_string(),
-        _ => unreachable!(),
-    };
+    let spwn_group = SPWN_SIGNATURE_GROUP.id.to_string();
     (*file_content) = file_content
         //remove previous spwn objects
         .split(';')
@@ -235,6 +227,8 @@ pub fn remove_spwn_objects(file_content: &mut String) {
         .join(";");
 }
 
+type Free<'a> = [SymmetricDifference<'a, TypeId, BuildHasherDefault<FnvHasher>>; 4];
+
 //returns the string to be appended to the old string
 pub fn append_objects(
     mut objects: Vec<GdObj>,
@@ -242,118 +236,56 @@ pub fn append_objects(
 ) -> Result<(String, [usize; 4]), String> {
     let mut closed_ids = get_used_ids(old_ls);
 
-    //collect all specific ids mentioned into closed_[id] lists
-    for obj in &objects {
-        for prop in obj.params.values() {
-            let class_index;
-            let id;
-            match prop {
-                ObjParam::Group(g) => {
-                    class_index = 0;
-                    id = vec![g.id];
-                }
+    let total: FnvHashSet<TypeId> = (0..10000).collect();
 
-                ObjParam::GroupList(l) => {
-                    class_index = 0;
-
-                    id = l.iter().map(|g| g.id).collect();
-                }
-                ObjParam::Color(g) => {
-                    class_index = 1;
-                    id = vec![g.id];
-                }
-                ObjParam::Block(g) => {
-                    class_index = 2;
-                    id = vec![g.id];
-                }
-                ObjParam::Item(g) => {
-                    class_index = 3;
-                    id = vec![g.id];
-                }
-                _ => continue,
-            }
-            for id in id {
-                match id {
-                    Id::Specific(i) => {
-                        closed_ids[class_index].insert(i);
-                    }
-                    _ => continue,
-                }
-            }
-        }
-    }
-
-    //find new ids for all the arbitrary ones
-    let mut id_maps: [FnvHashMap<ArbitraryId, SpecificId>; 4] = [
-        FnvHashMap::default(),
-        FnvHashMap::default(),
-        FnvHashMap::default(),
-        FnvHashMap::default(),
+    let cloned = closed_ids.clone();
+    //find every unused group that can then be mapped to arbitrary groups
+    let mut free = [
+        cloned[0].symmetric_difference(&total),
+        cloned[1].symmetric_difference(&total),
+        cloned[2].symmetric_difference(&total),
+        cloned[3].symmetric_difference(&total),
     ];
 
-    const ID_MAX: u16 = 999;
+    let insert_id = |id: u16, arb: bool, free: &mut Free, closed_ids: &mut SpecificIds, class_index: usize| {
+        if arb {
+            let id = free[class_index].next().unwrap_or(&999);
+            closed_ids[class_index].insert(*id);
+        } else {
+            closed_ids[class_index].insert(id);
+        }
+    };
 
     for obj in &mut objects {
         for prop in obj.params.values_mut() {
-            let class_index;
-            let ids: Vec<&mut Id>;
+
             match prop {
                 ObjParam::Group(g) => {
-                    class_index = 0;
-                    ids = vec![&mut g.id];
+                    insert_id(g.id, g.arbitrary, &mut free, &mut closed_ids, 0);
                 }
-                ObjParam::GroupList(g) => {
-                    class_index = 0;
-                    ids = g.iter_mut().map(|x| &mut x.id).collect();
+                ObjParam::GroupList(l) => {
+                    for g in l {
+                        insert_id((*g).id, (*g).arbitrary, &mut free, &mut closed_ids, 0);
+                    }
                 }
                 ObjParam::Color(g) => {
-                    class_index = 1;
-                    ids = vec![&mut g.id];
+                    insert_id(g.id, g.arbitrary, &mut free, &mut closed_ids, 1);  
                 }
                 ObjParam::Block(g) => {
-                    class_index = 2;
-                    ids = vec![&mut g.id];
+                    insert_id(g.id, g.arbitrary, &mut free, &mut closed_ids, 2);
                 }
                 ObjParam::Item(g) => {
-                    class_index = 3;
-                    ids = vec![&mut g.id];
+                    insert_id(g.id, g.arbitrary, &mut free, &mut closed_ids, 3);
                 }
                 _ => continue,
             }
-            for id in ids {
-                match &id {
-                    Id::Arbitrary(i) => {
-                        *id = Id::Specific(match id_maps[class_index].get(i) {
-                            Some(a) => *a,
-                            None => {
-                                let mut out = None;
-                                for i in 1..10000 {
-                                    if !closed_ids[class_index].contains(&i) {
-                                        out = Some(i);
-                                        closed_ids[class_index].insert(i);
-                                        break;
-                                    }
-                                }
-                                if let Some(id) = out {
-                                    id_maps[class_index].insert(*i, id);
-                                    id
-                                } else {
-                                    return Err(format!(
-                                        "This level exceeds the {} limit!",
-                                        ["group", "color", "block ID", "item ID"][class_index]
-                                    ));
-                                }
-                            }
-                        })
-                    }
-                    _ => continue,
-                }
-            }
         }
     }
+
+    const ID_MAX: usize = 999;
+
     for (i, list) in closed_ids.iter_mut().enumerate() {
-        list.remove(&0);
-        if list.len() > ID_MAX as usize {
+        if list.len() > ID_MAX {
             return Err(format!(
                 "This level exceeds the {} limit! ({}/{})",
                 ["group", "color", "block ID", "item ID"][i],
@@ -492,8 +424,8 @@ pub fn apply_fn_ids(func_ids: &[FunctionId]) -> Vec<GdObj> {
                         // Some(ObjParam::GroupList(l)) => {
                         //     l.iter().any(|x| x.id != ID::Specific(0))
                         // }
-                        Some(ObjParam::Group(g)) => g.id != Id::Specific(0),
-                        Some(ObjParam::GroupList(g)) => g[0].id != Id::Specific(0),
+                        Some(ObjParam::Group(g)) => g.id != 0 && !g.arbitrary,
+                        Some(ObjParam::GroupList(g)) => g[0].id != 0 && !g[0].arbitrary,
                         _ => unreachable!(),
                     },
                 };

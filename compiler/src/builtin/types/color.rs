@@ -35,7 +35,7 @@ impl std::fmt::Debug for Color {
     }
 }
 
-pub fn init(globals: &mut Globals) -> TypeBuilder<Color> {
+pub fn init() -> TypeBuilder<Color> {
     let ty = TypeBuilder::<Color>::name("color")
         .set_constructor(|id, arbitrary| Color { id, arbitrary });
     ty

@@ -2,7 +2,7 @@ pub mod classes;
 pub mod methods;
 
 use std::collections::HashMap;
-use std::sync::{Arc};
+use std::sync::Mutex;
 
 use lazy_static::lazy_static;
 
@@ -10,7 +10,7 @@ lazy_static! {
     /// Map of classes that have been globally registered
     ///
     /// These will be used as a fallback, and cached on the host when an unknown instance is seen
-    pub static ref DEFAULT_TYPES: Arc<HashMap<std::any::TypeId, super::types::classes::Type>> = Default::default();
+    pub static ref DEFAULT_TYPES: Mutex<HashMap<std::any::TypeId, super::types::classes::Type>> = Default::default();
 }
 
 macro_rules! register_type {
@@ -24,10 +24,12 @@ macro_rules! register_type {
 
         pub fn initialise(globals: &mut crate::globals::Globals) {
             $(
-                let ty = $namespace::init(globals).finish();
+                let ty = $namespace::init().finish();
 
                 DEFAULT_TYPES
-                    .insert(ty.type_id, ty);
+					.lock()
+					.unwrap()
+                    .insert(ty.type_id.clone(), ty.clone());
 
                 globals.n_type_ids.insert(ty.name.clone(), ty.type_id.clone());
                 globals.types.insert(ty.type_id, ty);

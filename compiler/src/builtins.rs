@@ -93,13 +93,7 @@ pub fn context_trigger(context: &Context, uid_counter: &mut usize) -> GdObj {
     }
 }
 
-pub type ArbitraryId = u16;
-pub type SpecificId = u16;
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Id {
-    Specific(SpecificId),
-    Arbitrary(ArbitraryId), // will be given specific ids at the end of compilation
-}
+pub type Id = u16;
 
 impl Value {
     pub fn member(

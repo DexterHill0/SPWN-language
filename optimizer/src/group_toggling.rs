@@ -1,4 +1,4 @@
-use compiler::builtins::{Group, Id};
+use compiler::builtins::{Group};
 use compiler::compiler_types::TriggerOrder;
 use parser::ast::ObjectMode;
 
@@ -182,7 +182,7 @@ fn group_triggers(
     let mut get_new_group = || {
         (*closed_group) += 1;
         Group {
-            id: Id::Arbitrary(*closed_group),
+            id: *closed_group, arbitrary: true,
         }
     };
 

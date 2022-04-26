@@ -1,4 +1,4 @@
-use crate::builtins::{Block, Group, Id, Item};
+use crate::builtins::{Block, Group, Item};
 use crate::{builtins::Color, leveldata::ObjParam, value::Value};
 use errors::RuntimeError;
 use parser::ast::ObjectMode;
@@ -41,50 +41,30 @@ pub fn parse_levelstring(ls: &str) -> Result<Vec<Value>, RuntimeError> {
                 4 | 5 | 11 | 13 | 15 | 16 | 17 | 34 | 41 | 42 | 48 | 56 | 58 | 59 | 60 | 62
                 | 64 | 65 | 66 | 67 | 70 | 81 | 86 | 87 | 89 | 93 | 94 | 96 | 98 | 104 | 100
                 | 102 | 103 | 106 | 36 => ObjParam::Bool(val.trim() == "1"),
-                21 | 22 | 23 | 50 => ObjParam::Color(Color {
-                    id: Id::Specific(val.parse::<u16>().unwrap()),
-                }),
+                21 | 22 | 23 | 50 => ObjParam::Color(Color::new(val.parse::<u16>().unwrap())),
                 31 | 43 | 44 | 49 => ObjParam::Text(val.to_string()),
-                71 => ObjParam::Group(Group {
-                    id: Id::Specific(val.parse::<u16>().unwrap()),
-                }),
-                95 => ObjParam::Block(Block {
-                    id: Id::Specific(val.parse::<u16>().unwrap()),
-                }),
+                71 => ObjParam::Group(Group::new(val.parse::<u16>().unwrap())),
+                95 => ObjParam::Block(Block::new(val.parse::<u16>().unwrap())),
 
                 57 => ObjParam::GroupList(
                     val.split('.')
-                        .map(|g| Group {
-                            id: Id::Specific(g.parse::<u16>().unwrap()),
-                        })
+                        .map(|g| Group::new(g.parse::<u16>().unwrap()))
                         .collect::<Vec<_>>(),
                 ),
                 80 => match obj_id {
-                    1815 => ObjParam::Block(Block {
-                        id: Id::Specific(val.parse::<u16>().unwrap()),
-                    }),
-                    _ => ObjParam::Item(Item {
-                        id: Id::Specific(val.parse::<u16>().unwrap()),
-                    }),
+                    1815 => ObjParam::Block(Block::new(val.parse::<u16>().unwrap())),
+                    _ => ObjParam::Item(Item::new(val.parse::<u16>().unwrap())),
                 },
                 51 => match obj_id {
                     1006 => {
                         if group_51 {
-                            ObjParam::Group(Group {
-                                id: Id::Specific(val.parse::<u16>().unwrap()),
-                            })
+                            ObjParam::Group(Group::new(val.parse::<u16>().unwrap()))
                         } else {
-                            ObjParam::Color(Color {
-                                id: Id::Specific(val.parse::<u16>().unwrap()),
-                            })
+                            ObjParam::Color(Color::new(val.parse::<u16>().unwrap()))
                         }
                     }
-                    899 => ObjParam::Color(Color {
-                        id: Id::Specific(val.parse::<u16>().unwrap()),
-                    }),
-                    _ => ObjParam::Group(Group {
-                        id: Id::Specific(val.parse::<u16>().unwrap()),
-                    }),
+                    899 => ObjParam::Color(Color::new(val.parse::<u16>().unwrap())),
+                    _ => ObjParam::Group(Group::new(val.parse::<u16>().unwrap())),
                 },
                 _ => ObjParam::Number(val.parse::<f64>().unwrap()),
             };

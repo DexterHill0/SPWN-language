@@ -39,7 +39,7 @@ impl std::fmt::Debug for Group {
     }
 }
 
-pub fn init(globals: &mut Globals) -> TypeBuilder<Group> {
+pub fn init() -> TypeBuilder<Group> {
     let ty = TypeBuilder::<Group>::name("group")
         .set_constructor(|id, arbitrary| Group { id, arbitrary })
         .add_static_method("test_fn", || Group::test_fn() );

@@ -35,7 +35,7 @@ impl std::fmt::Debug for Block {
     }
 }
 
-pub fn init(globals: &mut Globals) -> TypeBuilder<Block> {
+pub fn init() -> TypeBuilder<Block> {
     let ty = TypeBuilder::<Block>::name("block")
         .set_constructor(|id, arbitrary| Block { id, arbitrary });
     ty

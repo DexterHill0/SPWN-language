@@ -12,8 +12,6 @@ use compiler::builtins::Color;
 use compiler::builtins::Group;
 use compiler::builtins::Item;
 use compiler::compiler_types::TriggerOrder;
-use fnv::FnvHashMap;
-
 use crate::ReservedIds;
 
 use crate::TriggerNetwork;
@@ -26,18 +24,16 @@ use crate::Triggerlist;
 
 use crate::Trigger;
 
-use compiler::builtins::Id;
-
 use compiler::leveldata::ObjParam;
 
 pub(crate) fn param_identifier(param: &ObjParam) -> String {
     let str = match param {
-        ObjParam::Group(Group { id })
-        | ObjParam::Color(Color { id })
-        | ObjParam::Block(Block { id })
-        | ObjParam::Item(Item { id }) => match id {
-            Id::Specific(id) => format!("{}", id),
-            Id::Arbitrary(id) => format!("?{}", id),
+        ObjParam::Group(Group { id, arbitrary })
+        | ObjParam::Color(Color { id, arbitrary })
+        | ObjParam::Block(Block { id, arbitrary })
+        | ObjParam::Item(Item { id, arbitrary }) => match arbitrary {
+            false => format!("{}", id),
+            true => format!("?{}", id),
         },
         ObjParam::Number(n) => {
             if (n.round() - n).abs() < 0.001 {
@@ -52,9 +48,9 @@ pub(crate) fn param_identifier(param: &ObjParam) -> String {
             let mut out = String::new();
 
             for g in list {
-                match g.id {
-                    Id::Specific(id) => out += &format!("{}.", id),
-                    Id::Arbitrary(id) => out += &format!("?{}.", id),
+                match g.arbitrary {
+                    false => out += &format!("{}.", g.id),
+                    true => out += &format!("?{}.", g.id),
                 }
             }
             out.pop();
