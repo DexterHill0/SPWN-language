@@ -1,5 +1,6 @@
 use ariadne::Fmt;
 use clap::arg;
+use clap::AppSettings;
 use clap::ValueHint;
 //#![feature(arbitrary_enum_discriminant)]
 use ::compiler::builtins;
@@ -123,10 +124,13 @@ impl<'a> BuildOptions<'a> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let matches = App::new("SPWN").subcommands(
+    let matches = App::new("SPWN")
+    .global_setting(AppSettings::ArgRequiredElseHelp)
+    .subcommands(
         [
             App::new("build")
-                .about("Runs/builds a given file")
+                .about("Runs/builds a given file"
+            )
                 .visible_alias("b")
                 .args(&[
                     arg!(<SCRIPT> "Path to spwn source file").value_hint(ValueHint::AnyPath),
@@ -136,14 +140,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     arg!(-n --"level-name" [NAME] "Targets a specific level"),
                     arg!(-e --"live-editor" "Instead of writing the level to the save file, the script will use a live editor library if it's installed (Currently works only for MacOS)"),
                     arg!(-s --"save-file" [FILE] "Chooses a specific save file to write to"),
-                    arg!(-i --"include-path" "Adds a search path to look for librariesAdds a search path to look for libraries").takes_value(true).multiple_occurrences(true).min_values(0),
+                    arg!(-i --"include-path" "Adds a search path to look for libraries").takes_value(true).multiple_occurrences(true).min_values(0),
                     arg!(-a --allow "Allow the use of a builtin").takes_value(true).multiple_occurrences(true).min_values(0),
                     arg!(-d --deny "Deny the use of a builtin").takes_value(true).multiple_occurrences(true).min_values(0),
                 ]),
 
             App::new("eval")
                 .about("Runs/builds the input given in stdin/the console as SPWN code")
-                .visible_alias("b")
+                .visible_alias("e")
                 .args(&[
                     arg!(-c --"console-output" "Makes the script print the created level into the console instead of writing it to your save file"),
                     arg!(-l --"no-level" "Only compiles the script, no level creation at all"),
@@ -151,7 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     arg!(-n --"level-name" [NAME] "Targets a specific level"),
                     arg!(-e --"live-editor" "Instead of writing the level to the save file, the script will use a live editor library if it's installed (Currently works only for MacOS)"),
                     arg!(-s --"save-file" [FILE] "Chooses a specific save file to write to"),
-                    arg!(-i --"include-path" "Adds a search path to look for librariesAdds a search path to look for libraries").takes_value(true).multiple_occurrences(true).min_values(0),
+                    arg!(-i --"include-path" "Adds a search path to look for libraries").takes_value(true).multiple_occurrences(true).min_values(0),
                     arg!(-a --allow "Allow the use of a builtin").takes_value(true).multiple_occurrences(true).min_values(0),
                     arg!(-d --deny "Deny the use of a builtin").takes_value(true).multiple_occurrences(true).min_values(0),
                 ]),
@@ -161,6 +165,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 arg!(<LIBRARY> "Library to document")
             )
                 .about("Generates documentation for a SPWN library, in the form of a markdown file"),
+
+            App::new("new")
+                .about("Creates a new SPWN project in the given directory"
+            )
+                .args(&[
+                    arg!(-l --"lib" "Creates a PCKP-compatible SPWN library"),
+                    arg!(<PATH> "Path to create project in").value_hint(ValueHint::AnyPath),
+                ]),
         ]
     ).global_setting(clap::AppSettings::ArgRequiredElseHelp).get_matches();
 
@@ -178,10 +190,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let pckp_package = match config_file::config_to_package(cfg_file) {
                 Ok(p) => p,
                 Err(e) => {
-                    eprint_with_color(
-                        &format!("Error reading pckp file:\n{}", e.to_string()),
-                        Color::Red,
-                    );
+                    eprint_with_color(&format!("Error reading pckp file:\n{e}"), Color::Red);
 
                     std::process::exit(ERROR_EXIT_CODE);
                 }
@@ -191,7 +200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(_) => (),
                     Err(e) => {
                         eprint_with_color(
-                            &format!("Error installing dependencies:\n{}", e.to_string()),
+                            &format!("Error installing dependencies:\n{e}"),
                             Color::Red,
                         );
 
@@ -243,6 +252,66 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         //println!("doc {:?}", documentation);
+
+        Ok(())
+    } else if let Some(new_cmd) = matches.subcommand_matches("new") {
+        let lib_path = new_cmd.value_of("PATH").unwrap();
+        let mut path = PathBuf::from(lib_path);
+
+        if !new_cmd.is_present("lib") {
+            fs::create_dir_all(&path).unwrap();
+            path.push("main.spwn");
+
+            fs::write(
+                path,
+                "
+
+$.print(\"Hello world!\")
+
+",
+            )
+            .unwrap();
+        } else {
+            let mut src_path = path.clone();
+            src_path.push("src");
+            let mut yaml_path = path.clone();
+            yaml_path.push("pckp.yaml");
+
+            fs::create_dir_all(&src_path).unwrap();
+            src_path.push("lib.spwn");
+
+            fs::write(
+                src_path,
+                "#[cache_output]
+
+greeting = () {
+    $.print(\"Hello world\")
+}
+
+return {
+    greeting,
+}
+
+",
+            )
+            .unwrap();
+
+            fs::write(
+                yaml_path,
+                format!(
+                    "%YAML 1.2
+---
+
+name: {}
+version: 1.0.0
+folders:
+- src
+",
+                    path.file_name().unwrap().to_str().unwrap()
+                ),
+            )
+            .unwrap();
+        }
 
         Ok(())
     } else {
@@ -346,59 +415,7 @@ fn build_spwn_source(
         Ok(p) => p,
     };
     if options.gd_enabled {
-        let mut reserved = optimize::ReservedIds {
-            object_groups: Default::default(),
-            trigger_groups: Default::default(),
-            object_colors: Default::default(),
-
-            object_blocks: Default::default(),
-
-            object_items: Default::default(),
-        };
-        for obj in &compiled.objects {
-            for param in obj.params.values() {
-                match &param {
-                    leveldata::ObjParam::Group(g) => {
-                        reserved.object_groups.insert(g.id);
-                    }
-                    leveldata::ObjParam::GroupList(g) => {
-                        reserved.object_groups.extend(g.iter().map(|g| g.id));
-                    }
-
-                    leveldata::ObjParam::Color(g) => {
-                        reserved.object_colors.insert(g.id);
-                    }
-
-                    leveldata::ObjParam::Block(g) => {
-                        reserved.object_blocks.insert(g.id);
-                    }
-
-                    leveldata::ObjParam::Item(g) => {
-                        reserved.object_items.insert(g.id);
-                    }
-                    _ => (),
-                }
-            }
-        }
-
-        for fn_id in &compiled.func_ids {
-            for (trigger, _) in &fn_id.obj_list {
-                for (prop, param) in trigger.params.iter() {
-                    if *prop == 57 {
-                        match &param {
-                            leveldata::ObjParam::Group(g) => {
-                                reserved.trigger_groups.insert(g.id);
-                            }
-                            leveldata::ObjParam::GroupList(g) => {
-                                reserved.trigger_groups.extend(g.iter().map(|g| g.id));
-                            }
-
-                            _ => (),
-                        }
-                    }
-                }
-            }
-        }
+        let reserved = optimizer::ReservedIds::from_objects(&compiled.objects, &compiled.func_ids);
 
         let has_stuff = compiled.func_ids.iter().any(|x| !x.obj_list.is_empty());
         if options.opti_enabled && has_stuff {

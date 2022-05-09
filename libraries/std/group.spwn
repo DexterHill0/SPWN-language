@@ -57,7 +57,7 @@ impl @group {
             if y is @number {
                 -> self.move(0, y * y_multiplier, duration, easing, easing_rate)
             } else {
-                temp = @counter::new(0, reset = false, bits = x.bits)
+                temp = @counter::new(0, reset = false, bits = y.bits)
                 y.add_to(temp, for_each = (n) {
                     -> self.move(0, n * y_multiplier, duration, easing, easing_rate)
                 })
@@ -136,8 +136,7 @@ impl @group {
         wait(duration)
     },
 
-    toggle_on:
-    #[desc("Toggles the group on"), example("10g.toggle_on()")]
+    toggle_on: #[desc("Toggles the group on"), example("10g.toggle_on()")]
     (self) -> @NULL {
         $.add( trigger{
             OBJ_ID: 1049,
@@ -181,8 +180,7 @@ impl @group {
         wait(duration)
     },
 
-    follow:
-    #[desc("Implementation of the follow trigger"), example("10g.follow(11g)")]
+    follow: #[desc("Implementation of the follow trigger"), example("10g.follow(11g)")]
     (
         self,
         #[desc("Group of object to follow")] other: @group,

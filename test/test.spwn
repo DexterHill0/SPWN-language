@@ -1,14 +1,8 @@
-$.print({} == {})
+#[no_level]
 
-$.print({'a': 10} == {'a': 10})
 
-let name_age = {
-    'Sophia': 34, 
-    'Romulus': 14, 
-    'Remus': 15, 
-}
-$.remove_index(name_age, 'Romulus')
-$.assert(name_age == {
-    'Sophia': 34, 
-    'Remus': 15, 
-})
+
+f = (a, b, c) => a + b + c;
+
+$.print(f(1, 2, 3))
+

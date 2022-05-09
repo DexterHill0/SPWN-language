@@ -164,8 +164,7 @@ pub fn handle_unary_operator(
 }
 
 pub fn convert_to_int(num: f64, info: &CompilerInfo) -> Result<i32, RuntimeError> {
-    let rounded = num.round();
-    if (num - rounded).abs() > 0.000000001 {
+    if num.fract().abs() > f64::EPSILON {
         return Err(RuntimeError::CustomError(create_error(
             info.clone(),
             &format!("expected integer, found {}", num),
@@ -173,7 +172,7 @@ pub fn convert_to_int(num: f64, info: &CompilerInfo) -> Result<i32, RuntimeError
             None,
         )));
     }
-    Ok(rounded as i32)
+    Ok(num as i32)
 }
 
 pub fn stored_to_variable(v: StoredValue, globals: &Globals) -> ast::Variable {
@@ -213,6 +212,7 @@ impl From<ast::Operator> for Builtin {
             Either => EitherOp,
             Both => BothOp,
             Range => RangeOp,
+            InclRange => InclRangeOp,
             //MUTABLE ONLY
             //ADD CHECk
             Assign => AssignOp,
@@ -324,8 +324,7 @@ pub fn execute_macro(
             .inner()
             .get_variables()
             .values()
-            .map(|stack| stack.iter().map(|VariableData { val: a, .. }| *a))
-            .flatten()
+            .flat_map(|stack| stack.iter().map(|VariableData { val: a, .. }| *a))
         {
             globals.push_preserved_val(val)
         }

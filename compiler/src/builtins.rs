@@ -1,6 +1,7 @@
 //! Defining all native types (and functions?)
 #![allow(unused_assignments)]
 use internment::LocalIntern;
+use shared::SpwnSource;
 use shared::StoredValue;
 
 use crate::compiler_types::*;
@@ -15,6 +16,8 @@ use std::fs;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::path::Path;
+use std::path::PathBuf;
+use std::time::SystemTime;
 
 use crate::value::*;
 use crate::value_storage::*;
@@ -26,6 +29,7 @@ use std::collections::hash_map::DefaultHasher;
 
 // BUILT IN STD
 use include_dir::{Dir, File};
+use std::env;
 
 #[cfg(not(debug_assertions))]
 const STANDARD_LIBS: Dir = include_dir!("../libraries");
@@ -43,7 +47,7 @@ pub fn get_lib_file<'a, S: AsRef<Path>>(path: S) -> Option<File<'a>> {
 
 fn get_file<'a>(dir: &'a Dir, path: &Path) -> Option<File<'a>> {
     for file in dir.files {
-        let replaced = &file.path.replace("\\", "/");
+        let replaced = &file.path.replace('\\', "/");
         let file_path = &Path::new(replaced);
 
         if Path::new(file_path) == path {
@@ -58,6 +62,18 @@ fn get_file<'a>(dir: &'a Dir, path: &Path) -> Option<File<'a>> {
     }
 
     None
+}
+
+fn div_zero_check(b: f64, op: &str, builtin: &str, info: &CompilerInfo) -> Result<(), RuntimeError> {
+    if b.abs() == 0.0 {
+        return Err(RuntimeError::BuiltinError {
+            builtin: builtin.to_string(),
+            message: format!("Cannot {} by 0", op),
+            info: info.clone(),
+        })
+    } else {
+        Ok(())
+    }
 }
 
 //use text_io;
@@ -95,103 +111,63 @@ pub enum Id {
     Arbitrary(ArbitraryId), // will be given specific ids at the end of compilation
 }
 
+macro_rules! id_default_methods {
+    ($id_struct:ident, $short_name:expr) => {
+        impl $id_struct {
+            pub fn new(id: SpecificId) -> $id_struct {
+                //creates new specific group
+                $id_struct {
+                    id: Id::Specific(id),
+                }
+            }
+
+            pub fn next_free(counter: &mut ArbitraryId) -> $id_struct {
+                //creates new specific group
+                (*counter) += 1;
+                $id_struct {
+                    id: Id::Arbitrary(*counter),
+                }
+            }
+        }
+
+        impl std::fmt::Debug for $id_struct {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.id {
+                    Id::Specific(n) => f.write_str(&format!("{}{}", n, $short_name)),
+                    Id::Arbitrary(n) => f.write_str(&format!("{}?{}", n, $short_name)),
+                }
+            }
+        }
+    };
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Group {
     pub id: Id,
 }
 
-impl std::fmt::Debug for Group {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.id {
-            Id::Specific(n) => f.write_str(&format!("{}g", n)),
-            Id::Arbitrary(n) => f.write_str(&format!("{}?g", n)),
-        }
-    }
-}
-
-impl Group {
-    pub fn new(id: SpecificId) -> Self {
-        //creates new specific group
-        Group {
-            id: Id::Specific(id),
-        }
-    }
-
-    pub fn next_free(counter: &mut ArbitraryId) -> Self {
-        //creates new specific group
-        (*counter) += 1;
-        Group {
-            id: Id::Arbitrary(*counter),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Color {
     pub id: Id,
 }
 
-impl Color {
-    pub fn new(id: SpecificId) -> Self {
-        //creates new specific color
-        Self {
-            id: Id::Specific(id),
-        }
-    }
-
-    pub fn next_free(counter: &mut ArbitraryId) -> Self {
-        //creates new specific color
-        (*counter) += 1;
-        Self {
-            id: Id::Arbitrary(*counter),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Block {
     pub id: Id,
 }
 
-impl Block {
-    pub fn new(id: SpecificId) -> Self {
-        //creates new specific block
-        Self {
-            id: Id::Specific(id),
-        }
-    }
-
-    pub fn next_free(counter: &mut ArbitraryId) -> Self {
-        //creates new specific block
-        (*counter) += 1;
-        Self {
-            id: Id::Arbitrary(*counter),
-        }
-    }
-}
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Item {
     pub id: Id,
 }
 
-impl Item {
-    pub fn new(id: SpecificId) -> Self {
-        //creates new specific item id
-        Self {
-            id: Id::Specific(id),
-        }
-    }
-
-    pub fn next_free(counter: &mut ArbitraryId) -> Self {
-        //creates new specific item id
-        (*counter) += 1;
-        Self {
-            id: Id::Arbitrary(*counter),
-        }
-    }
-}
+id_default_methods!(Group, "g");
+id_default_methods!(Color, "c");
+id_default_methods!(Block, "b");
+id_default_methods!(Item, "i");
 
 impl Value {
+    #[allow(clippy::single_match)]
     pub fn member(
         &self,
         member: LocalIntern<String>,
@@ -199,10 +175,6 @@ impl Value {
         globals: &mut Globals,
         info: CompilerInfo,
     ) -> Option<StoredValue> {
-        let get_impl = |t: u16, m: LocalIntern<String>| match globals.implementations.get(&t) {
-            Some(imp) => imp.get(&m).map(|mem| mem.0),
-            None => None,
-        };
         if member == globals.TYPE_MEMBER_NAME {
             return Some(match self {
                 Value::Dict(dict) => match dict.get(&globals.TYPE_MEMBER_NAME) {
@@ -227,7 +199,7 @@ impl Value {
                 Value::Str(a) => {
                     if member.as_ref() == "length" {
                         return Some(store_const_value(
-                            Value::Number(a.len() as f64),
+                            Value::Number(a.chars().count() as f64),
                             globals,
                             context.start_group,
                             info.position,
@@ -271,7 +243,54 @@ impl Value {
                     }
                     _ => (),
                 },
+                Value::Macro(m) => match member.as_ref().as_str() {
+                    "args" => {
+                        let mut args = vec![];
+                        for MacroArgDef {
+                            name,
+                            default,
+                            pattern,
+                            ..
+                        } in &m.args
+                        {
+                            let mut dict_map = FnvHashMap::default();
+                            dict_map.insert(
+                                LocalIntern::new(String::from("name")),
+                                store_const_value(
+                                    Value::Str(name.to_string()),
+                                    globals,
+                                    context.start_group,
+                                    info.position,
+                                ),
+                            );
+                            if let Some(v) = default {
+                                dict_map.insert(LocalIntern::new(String::from("default")), *v);
+                            }
+                            if let Some(v) = pattern {
+                                dict_map.insert(LocalIntern::new(String::from("pattern")), *v);
+                            }
+                            args.push(store_const_value(
+                                Value::Dict(dict_map),
+                                globals,
+                                context.start_group,
+                                info.position,
+                            ))
+                        }
+                        return Some(store_const_value(
+                            Value::Array(args),
+                            globals,
+                            context.start_group,
+                            info.position,
+                        ));
+                    }
+                    _ => (),
+                },
                 _ => (),
+            };
+
+            let get_impl = |t: u16, m: LocalIntern<String>| match globals.implementations.get(&t) {
+                Some(imp) => imp.get(&m).map(|mem| mem.0),
+                None => None,
             };
 
             match self {
@@ -311,23 +330,14 @@ use std::str::FromStr;
 macro_rules! typed_argument_check {
 
     (($globals:ident, $arg_index:ident, $arguments:ident, $info:ident, $context:ident, $builtin:ident)  ($($arg_name:ident),*)) => {
-        #[allow(unused_variables)]
-        #[allow(unused_mut)]
-        #[allow(unused_parens)]
         let ( $($arg_name),*) = clone_and_get_value($arguments[$arg_index], $globals, $context.start_group, true);
     };
 
     (($globals:ident, $arg_index:ident, $arguments:ident, $info:ident, $context:ident, $builtin:ident) mut ($($arg_name:ident),*)) => {
-        #[allow(unused_variables)]
-        #[allow(unused_mut)]
-        #[allow(unused_parens)]
         let ( $(mut $arg_name),*) = $globals.stored_values[$arguments[$arg_index]].clone();
     };
 
     (($globals:ident, $arg_index:ident, $arguments:ident, $info:ident, $context:ident, $builtin:ident) ($($arg_name:ident),*): $arg_type:ident) => {
-        #[allow(unused_variables)]
-        #[allow(unused_mut)]
-        #[allow(unused_parens)]
 
         let  ( $($arg_name),*) = match clone_and_get_value($arguments[$arg_index], $globals, $context.start_group, true) {
             Value::$arg_type($($arg_name),*) => ($($arg_name),*),
@@ -348,9 +358,6 @@ macro_rules! typed_argument_check {
     };
 
     (($globals:ident, $arg_index:ident, $arguments:ident, $info:ident, $context:ident, $builtin:ident) mut ($($arg_name:ident),*): $arg_type:ident) => {
-        #[allow(unused_variables)]
-        #[allow(unused_mut)]
-        #[allow(unused_parens)]
         let  ( $(mut $arg_name),*) = match $globals.stored_values[$arguments[$arg_index]].clone() {
             Value::$arg_type($($arg_name),*) => ($($arg_name),*),
 
@@ -510,6 +517,8 @@ macro_rules! builtins {
             contexts: &mut FullContext,
         ) -> Result<(), RuntimeError> {
             #![allow(unused_variables)]
+            #![allow(unused_mut)]
+            #![allow(unused_parens)]
             if !$globals.permissions.is_allowed(func) {
                 if !$globals.permissions.is_safe(func) {
                     return Err(RuntimeError::BuiltinError {
@@ -618,82 +627,48 @@ macro_rules! builtins {
         }
 
         pub fn builtin_docs() -> String {
-            let mut all = Vec::new();
-            $(
-                let mut full_out = format!(
-                    "## $.{}\n",
-                    stringify!($name).replace("_", "\\_")
-                );
-                let mut out = String::new();
-
-
-                if !$desc.is_empty() {
-                    out += &format!(
-                        "## Description:\n{} <div>\n",
-                        $desc
-                    );
-                }
-
-                if !$example.is_empty() {
-                    out += &format!(
-                        "## Example:\n```spwn\n{}\n```\n",
-                        $example.trim()
-                    );
-
-                }
-                out += &format!("**Allowed by default:** {}\n", if $safe { "yes" } else { "no" });
-                #[allow(unused_mut, unused_variables)]
-                let mut arg_title_set = false;
+            let all = [
                 $(
-                    out += &format!("## Arguments: \n **{}**\n", $argdesc);
-                    arg_title_set = true;
-                )?
-                $(
-                    let mut args = Vec::<(&str, Option<&str>, bool)>::new();
+                    (stringify!($name),
+                    concat!(
+                        concat!(
+                        "## Description:\n", $desc, "<div>\n",
+                        ),
+                        concat!("## Example:\n```spwn\n", $example, "\n```\n"),
 
-                    $(
-                        #[allow(unused_mut)]
-                        let mut name = stringify!($($arg_name),*);
-                        #[allow(unused_mut, unused_assignments)]
-                        let mut typ: Option<&str> = None;
-                        $(typ = Some(stringify!($arg_type));)?
-                        #[allow(unused_mut, unused_assignments)]
-                        let mut mutable = false;
-                        $(mutable = stringify!($mut) == "mut";)?
-                        args.push((name, typ, mutable));
-                    )+
-                    if !arg_title_set { out += "## Arguments: \n"; }
-                    out += "| # | **Name** | **Type** |\n|-|-|-|\n";
-                    for (i, (name, typ, mutable)) in args.into_iter().enumerate() {
-                        out += &format!("| {} | `{}` | {}{} |\n", i + 1, name, if mutable {"_mutable_ "} else {""}, match typ {
-                            Some(s) => format!("_{}_", s),
-                            None => String::new(),
-                        });
-                    }
-
-
-
-
-
-                )?
-
-                for line in out.lines() {
-                    full_out += &format!("> {}\n", line);
-                }
-
-                all.push((stringify!($name), full_out));
-
-            )*
+                        concat!("**Allowed by default:** ", $safe, "\n"),
+                        concat!(
+                            "## Arguments: \n",
+                            $(
+                                "**", $argdesc, "**\n"
+                            )?
+                        ),
+                        $(
+                            concat!("| **Name** | **Type** |\n|-|-|\n",
+                                $(
+                                    concat!("| ", stringify!($($arg_name),*), " | ", concat!($(concat!("_", stringify!($mut), "able_ "),)? ""), concat!($(concat!("_", stringify!($arg_type), "_"),)? "") , " |\n"),
+                                )+
+                            ),
+                        )?
+                    )),
+                )*
+            ];
             let mut out = String::new();
 
             let mut operators = Vec::new();
             let mut normal_ones = Vec::new();
 
             for (name, doc) in all {
+                let header = format!("## $.{}\n", name);
+                let mut new_doc = String::new();
+                for line in doc.lines() {
+                    new_doc += &format!("> {}\n", line);
+                }
+                new_doc = header + &new_doc;
                 if name.starts_with("_") && name.ends_with("_") {
-                    operators.push((name, doc));
+                    operators.push((name, new_doc));
                 } else {
-                    normal_ones.push((name, doc));
+                    normal_ones.push((name, new_doc));
                 }
             }
 
@@ -995,6 +970,10 @@ $.add(obj {
                 info,
             })
         };
+
+        if obj.is_empty() {
+            return Ok(());
+        }
 
         let mut ignore_context = false;
         if arguments.len() == 2 {
@@ -1451,7 +1430,22 @@ $.random(1..11) // returns a random integer between 1 and 10
             }
         };
     }
-    [ReadFile] #[safe = false, desc = "Returns the contents of a file in the local system (uses the current directory as base for relative paths)", example = "data = $.readfile(\"file.txt\")"]
+
+    [CWD] #[safe = true, desc = "Returns the current working directory", example = "$.cwd() // \"C:/spwn/\""] fn cwd() {
+        Value::Str(env::current_dir().unwrap().to_str().unwrap().to_string())
+    }
+
+    [DirName] #[safe = true, desc = "Returns the directory of the current spwn file", example = "$.dirname() // \"C:/spwn/\""] fn dirname() {
+        let mut path = match info.position.file.as_ref().clone() {
+            SpwnSource::File(f) => f,
+            SpwnSource::BuiltIn(b) => b,
+            SpwnSource::String(s) => PathBuf::from(s.as_ref().clone()),
+        };
+        path.pop(); // remove the basename
+        Value::Str(path.to_str().unwrap().to_string())
+    }
+
+    [ReadFile] #[safe = false, desc = "Returns the contents of a file in the local file system (uses the current directory as base for relative paths)", example = "data = $.readfile(\"file.txt\")"]
     fn readfile(#["Path of file to read, and the format it's in (\"text\", \"bin\", \"json\", \"toml\" or \"yaml\")"]) {
         if arguments.is_empty() || arguments.len() > 2 {
             return Err(RuntimeError::BuiltinError {
@@ -1688,7 +1682,7 @@ $.random(1..11) // returns a random integer between 1 and 10
     }
 
 
-    [WriteFile] #[safe = false, desc = "Writes a string to a file in the local system (any previous content will be overwritten, and a new file will be created if it does not already exist)", example = "$.write_file(\"file.txt\", \"Hello\")"]
+    [WriteFile] #[safe = false, desc = "Writes a string to a file in the local file system (any previous content will be overwritten, and a new file will be created if it does not already exist)", example = "$.write_file(\"file.txt\", \"Hello\")"]
     fn writefile((path): Str, (data): Str) {
 
 
@@ -1701,6 +1695,128 @@ $.random(1..11) // returns a random integer between 1 and 10
                     info,
                 });
             }
+        };
+        Value::Null
+    }
+
+    [DeleteFile] #[safe = false, desc = "Deletes a file in the local file system", example = "$.deletefile(\"file.txt\")"] fn deletefile((path): Str) {
+        match fs::remove_file(path) {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(RuntimeError::BuiltinError {
+                    builtin,
+                    message: format!("Error when deleting file: {}", e),
+                    info,
+                });
+            }
+        };
+        Value::Null
+    }
+
+    [FileExists] #[safe = false, desc = "Checks if a member exists in the local file system", example = "$.fileexists(\"file.txt\")"] fn fileexists((path): Str) {
+        Value::Bool(fs::metadata(path).is_ok())
+    }
+
+    [FileKind] #[safe = false, desc = "Returns the kind of a member of the local file system", example = "$.filekind(\"file.txt\")"] fn filekind((path): Str) {
+        match fs::metadata(path) {
+            Ok(meta) => {
+                let kind = match meta.file_type() {
+                    _ if meta.is_file() => "file",
+                    _ if meta.is_dir() => "dir",
+                    _ => "unknown",
+                };
+                Value::Str(kind.to_string())
+            }
+            Err(e) => {
+                return Err(RuntimeError::BuiltinError {
+                    builtin,
+                    message: format!("Error when checking file type: {}", e),
+                    info,
+                });
+            },
+        }
+    }
+
+    [MetaData] #[safe = false, desc = "Returns the metadata of a file or directory in the local file system", example = "$.metadata(\"file.txt\")"] fn metadata((path): Str) {
+        match fs::metadata(path) {
+            Ok(meta) => {
+                let mut dict: FnvHashMap<LocalIntern<String>, StoredValue> = FnvHashMap::default();
+                let mut store = |value| store_const_value(value, globals, context.start_group, info.position);
+                dict.insert(LocalIntern::new(String::from("size")), store(Value::Number(meta.len() as f64)));
+                dict.insert(LocalIntern::new(String::from("modified")), store(Value::Number(meta.modified().unwrap().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64())));
+                dict.insert(LocalIntern::new(String::from("accessed")), store(Value::Number(meta.accessed().unwrap().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64())));
+                dict.insert(LocalIntern::new(String::from("created")), store(Value::Number(meta.created().unwrap().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64())));
+                dict.insert(LocalIntern::new(String::from("readonly")), store(Value::Bool(meta.permissions().readonly())));
+                Value::Dict(dict)
+            }
+            Err(e) => {
+                return Err(RuntimeError::BuiltinError {
+                    builtin,
+                    message: format!("Error when checking for file metadata: {}", e),
+                    info,
+                });
+            },
+        }
+    }
+
+    [ReadDir] #[safe = false, desc = "Reads the contents of a directory in the local file system", example = "$.readdir(\"/\")"] fn readdir((path): Str) {
+        let mut arr: Vec<StoredValue> = vec![];
+        for entry in fs::read_dir(path).unwrap() {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(e) => {
+                    return Err(RuntimeError::BuiltinError {
+                        builtin,
+                        message: format!("Error when reading directory: {}", e),
+                        info,
+                    });
+                },
+            };
+            let path = entry.path();
+            let name = path.file_name().unwrap().to_str().unwrap().to_string();
+            arr.push(store_const_value(Value::Str(name), globals, context.start_group, info.position));
+        }
+        Value::Array(arr)
+    }
+
+    [MkDir] #[safe = false, desc = "Creates a directory in the local file system", example = "$.mkdir(\"/\")"] fn mkdir((path): Str) {
+        match fs::create_dir(path) {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(RuntimeError::BuiltinError {
+                    builtin,
+                    message: format!("Error when creating directory: {}", e),
+                    info,
+                });
+            },
+        };
+        Value::Null
+    }
+
+    [RmDir] #[safe = false, desc = "Removes an empty directory in the local file system", example = "$.rmdir(\"folder\")"] fn rmdir((path): Str) {
+        match fs::remove_dir(path) {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(RuntimeError::BuiltinError {
+                    builtin,
+                    message: format!("Error when removing directory: {}", e),
+                    info,
+                });
+            },
+        };
+        Value::Null
+    }
+
+    [RmDirAll] #[safe = false, desc = "Removes a directory in the local file system", example = "$.rmdirall(\"folder\")"] fn rmdir_all((path): Str) {
+        match fs::remove_dir_all(path) {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(RuntimeError::BuiltinError {
+                    builtin,
+                    message: format!("Error when removing directory: {}", e),
+                    info,
+                });
+            },
         };
         Value::Null
     }
@@ -2004,6 +2120,11 @@ $.assert(name_age == {
             }
         }
     }
+    [InclRangeOp] #[safe = true, desc = "Default implementation of the `..=` operator", example = "$._incl_range_(0, 10)"]
+    fn _incl_range_((val_a): Number, (b): Number) {
+        Value::Range(val_a as i32, (b + 1.0) as i32, 1)
+    }
+
     // unary operators
     [IncrOp] #[safe = true, desc = "Default implementation of the `n++` operator", example = "let n = 0\n$._increment_(n)\n$.assert(n == 1)"]
     fn _increment_(mut (a): Number) { a += 1.0; Value::Number(a - 1.0)}
@@ -2097,14 +2218,35 @@ $.assert(name_age == {
     }
 
     [DividedByOp] #[safe = true, desc = "Default implementation of the `/` operator", example = "$._divided_by_(64, 8)"]
-    fn _divided_by_((a): Number, (b): Number) { Value::Number(a / b) }
+    fn _divided_by_((a): Number, (b): Number) {
+        div_zero_check(b, "divide", &builtin, &info)?;
+        Value::Number(a / b)
+    }
     [IntdividedByOp] #[safe = true, desc = "Default implementation of the `/%` operator", example = "$._intdivided_by_(64, 8)"]
-    fn _intdivided_by_((a): Number, (b): Number) { Value::Number((a / b).floor()) }
+    fn _intdivided_by_((a): Number, (b): Number) {
+        div_zero_check(b, "divide", &builtin, &info)?;
+        Value::Number((a / b).floor())
+    }
     [TimesOp] #[safe = true, desc = "Default implementation of the `*` operator", example = "$._times_(8, 8)"]
     fn _times_((a), (b): Number) {
         match a {
             Value::Number(a) => Value::Number(a * b),
-            Value::Str(a) => Value::Str(a.repeat(convert_to_int(b, &info)? as usize)),
+            Value::Str(a) => {
+                let number = convert_to_int(b, &info)?;
+                if number >= 0 {
+                    Value::Str(a.repeat(number as usize))
+                } else {
+                    return Err(RuntimeError::BuiltinError {
+                        builtin,
+                        message: format!(
+                            "Expected {}, found {}",
+                            "a positive number",
+                            b,
+                        ),
+                        info,
+                    })
+                }
+            },
             Value::Array(ar) => {
                 let mut new_out = Vec::<StoredValue>::new();
                 for _ in 0..convert_to_int(b, &info)? {
@@ -2130,7 +2272,7 @@ $.assert(name_age == {
                         (globals.get_area(arguments[1]), &format!("Value defined as {} here", globals.get_type_str(arguments[1]))),
                         (
                             info.position,
-                            &format!("Expected @number and @number or @string and @number, found @{} and @{}", globals.get_type_str(arguments[0]), globals.get_type_str(arguments[1])),
+                            &format!("Expected @number and @number, @string and @number or @array and @number, found @{} and @{}", globals.get_type_str(arguments[0]), globals.get_type_str(arguments[1])),
                         ),
                     ],
                     None,
@@ -2140,7 +2282,10 @@ $.assert(name_age == {
         }
     }
     [ModOp] #[safe = true, desc = "Default implementation of the `%` operator", example = "$._mod_(70, 8)"]
-    fn _mod_((a): Number, (b): Number) { Value::Number(a.rem_euclid(b)) }
+    fn _mod_((a): Number, (b): Number) {
+        div_zero_check(b, "modulo", &builtin, &info)?;
+        Value::Number(a.rem_euclid(b))
+    }
     [PowOp] #[safe = true, desc = "Default implementation of the `^` operator", example = "$._pow_(8, 2)"]
     fn _pow_((a): Number, (b): Number) { Value::Number(a.powf(b)) }
     [PlusOp] #[safe = true, desc = "Default implementation of the `+` operator", example = "$._plus_(32, 32)"]
@@ -2358,10 +2503,26 @@ $.assert(name_age == {
         }
         Value::Null
     }
-    [MultiplyOp] #[safe = true, desc = "Default implementation of the `*=` operator", example = "let val = 5\n$._multiply_(val, 10)\n$.assert(val == 50)"]        fn _multiply_(mut (a), (b): Number)         {
+    [MultiplyOp] #[safe = true, desc = "Default implementation of the `*=` operator", example = "let val = 5\n$._multiply_(val, 10)\n$.assert(val == 50)"]
+    fn _multiply_(mut (a), (b): Number)         {
         match &mut a {
             Value::Number(a) => *a *= b,
-            Value::Str(a) => *a = a.repeat(convert_to_int(b, &info)? as usize),
+            Value::Str(a) => {
+                let number = convert_to_int(b, &info)?;
+                if number >= 0 {
+                    *a = a.repeat(number as usize)
+                } else {
+                    return Err(RuntimeError::BuiltinError {
+                        builtin,
+                        message: format!(
+                            "Expected {}, found {}",
+                            "a positive number",
+                            b,
+                        ),
+                        info,
+                    })
+                }
+            },
             _ => {
                 return Err(RuntimeError::CustomError(create_error(
                     info.clone(),
@@ -2382,13 +2543,25 @@ $.assert(name_age == {
         Value::Null
     }
     [DivideOp] #[safe = true, desc = "Default implementation of the `/=` operator", example = "let val = 9\n$._divide_(val, 3)\n$.assert(val == 3)"]
-    fn _divide_(mut (a): Number, (b): Number) { a /= b; Value::Null }
+    fn _divide_(mut (a): Number, (b): Number) {
+        div_zero_check(b, "divide", &builtin, &info)?;
+        a /= b;
+        Value::Null
+    }
     [IntdivideOp] #[safe = true, desc = "Default implementation of the `/%=` operator", example = "let val = 10\n$._intdivide_(val, 3)\n$.assert(val == 3)"]
-    fn _intdivide_(mut (a): Number, (b): Number) { a /= b; a = a.floor(); Value::Null }
+    fn _intdivide_(mut (a): Number, (b): Number) {
+        div_zero_check(b, "divide", &builtin, &info)?;
+        a /= b; a = a.floor();
+        Value::Null
+    }
     [ExponateOp] #[safe = true, desc = "Default implementation of the `^=` operator", example = "let val = 3\n$._exponate_(val, 3)\n$.assert(val == 27)"]
     fn _exponate_(mut (a): Number, (b): Number) { a = a.powf(b); Value::Null }
     [ModulateOp] #[safe = true, desc = "Default implementation of the `%=` operator", example = "let val = 10\n$._modulate_(val, 3)\n$.assert(val == 1)"]
-    fn _modulate_(mut (a): Number, (b): Number) { a = a.rem_euclid(b); Value::Null }
+    fn _modulate_(mut (a): Number, (b): Number) {
+        div_zero_check(b, "modulo", &builtin, &info)?;
+        a = a.rem_euclid(b);
+        Value::Null
+    }
 
     [EitherOp] #[safe = true, desc = "Default implementation of the `|` operator", example = "$._either_(@number, @counter)"]
     fn _either_((a), (b)) {
