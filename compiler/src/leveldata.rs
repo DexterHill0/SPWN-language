@@ -1,14 +1,11 @@
 // useful things for dealing with gd level data
 
 use crate::builtins::*;
-use crate::compiler_types::{FunctionId, TypeId};
+use crate::compiler_types::FunctionId;
 use crate::context::Context;
-use fnv::{FnvHashMap, FnvHashSet};
+use ahash::{AHashMap, AHashSet};
 use parser::ast::ObjectMode;
 use std::hash::Hash;
-use std::collections::hash_set::SymmetricDifference;
-use std::hash::BuildHasherDefault;
-use fnv::FnvHasher;
 
 pub struct TriggerOrder(f32);
 
@@ -101,6 +98,7 @@ impl fmt::Display for ObjParam {
         }
     }
 }
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct GdObj {
     /*pub obj_id: u16,
@@ -108,7 +106,7 @@ pub struct GdObj {
     pub target: Group,
     pub spawn_triggered: bool,*/
     pub func_id: usize,
-    pub params: FnvHashMap<u16, ObjParam>,
+    pub params: AHashMap<u16, ObjParam>,
     pub mode: ObjectMode,
     pub unique_id: usize,
 }
@@ -121,19 +119,17 @@ impl GdObj {
     }
 }
 
-type SpecificIds = [FnvHashSet<u16>; 4];
-
-pub fn get_used_ids(ls: &str) -> SpecificIds {
+pub fn get_used_ids(ls: &str) -> [AHashSet<u16>; 4] {
     let mut out = [
-        FnvHashSet::<u16>::default(),
-        FnvHashSet::<u16>::default(),
-        FnvHashSet::<u16>::default(),
-        FnvHashSet::<u16>::default(),
+        AHashSet::<u16>::default(),
+        AHashSet::<u16>::default(),
+        AHashSet::<u16>::default(),
+        AHashSet::<u16>::default(),
     ];
     let objects = ls.split(';');
     for obj in objects {
         let props: Vec<&str> = obj.split(',').collect();
-        let mut map = FnvHashMap::default();
+        let mut map = AHashMap::default();
 
         for i in (0..props.len() - 1).step_by(2) {
             map.insert(props[i], props[i + 1]);
@@ -201,12 +197,13 @@ const MAX_HEIGHT: u16 = 40;
 const DELTA_X: u16 = 1;
 
 pub const SPWN_SIGNATURE_GROUP: Group = Group {
-    id: 1001, arbitrary: false
+    id: 1001, arbitrary: false,
 };
 //use crate::ast::ObjectMode;
 
 pub fn remove_spwn_objects(file_content: &mut String) {
-    let spwn_group = SPWN_SIGNATURE_GROUP.id.to_string();
+    let spwn_group = match SPWN_SIGNATURE_GROUP.id.to_string();
+
     (*file_content) = file_content
         //remove previous spwn objects
         .split(';')
@@ -227,8 +224,6 @@ pub fn remove_spwn_objects(file_content: &mut String) {
         .join(";");
 }
 
-type Free<'a> = [SymmetricDifference<'a, TypeId, BuildHasherDefault<FnvHasher>>; 4];
-
 //returns the string to be appended to the old string
 pub fn append_objects(
     mut objects: Vec<GdObj>,
@@ -236,56 +231,118 @@ pub fn append_objects(
 ) -> Result<(String, [usize; 4]), String> {
     let mut closed_ids = get_used_ids(old_ls);
 
-    let total: FnvHashSet<TypeId> = (0..10000).collect();
-
-    let cloned = closed_ids.clone();
-    //find every unused group that can then be mapped to arbitrary groups
-    let mut free = [
-        cloned[0].symmetric_difference(&total),
-        cloned[1].symmetric_difference(&total),
-        cloned[2].symmetric_difference(&total),
-        cloned[3].symmetric_difference(&total),
-    ];
-
-    let insert_id = |id: u16, arb: bool, free: &mut Free, closed_ids: &mut SpecificIds, class_index: usize| {
-        if arb {
-            let id = free[class_index].next().unwrap_or(&999);
-            closed_ids[class_index].insert(*id);
-        } else {
-            closed_ids[class_index].insert(id);
-        }
-    };
-
-    for obj in &mut objects {
-        for prop in obj.params.values_mut() {
-
+    //collect all specific ids mentioned into closed_[id] lists
+    for obj in &objects {
+        for prop in obj.params.values() {
+            let class_index;
+            let id;
             match prop {
                 ObjParam::Group(g) => {
-                    insert_id(g.id, g.arbitrary, &mut free, &mut closed_ids, 0);
+                    class_index = 0;
+                    id = vec![g.id];
                 }
+
                 ObjParam::GroupList(l) => {
-                    for g in l {
-                        insert_id((*g).id, (*g).arbitrary, &mut free, &mut closed_ids, 0);
-                    }
+                    class_index = 0;
+
+                    id = l.iter().map(|g| g.id).collect();
                 }
                 ObjParam::Color(g) => {
-                    insert_id(g.id, g.arbitrary, &mut free, &mut closed_ids, 1);  
+                    class_index = 1;
+                    id = vec![g.id];
                 }
                 ObjParam::Block(g) => {
-                    insert_id(g.id, g.arbitrary, &mut free, &mut closed_ids, 2);
+                    class_index = 2;
+                    id = vec![g.id];
                 }
                 ObjParam::Item(g) => {
-                    insert_id(g.id, g.arbitrary, &mut free, &mut closed_ids, 3);
+                    class_index = 3;
+                    id = vec![g.id];
                 }
                 _ => continue,
+            }
+            for id in id {
+                match id {
+                    Id::Specific(i) => {
+                        closed_ids[class_index].insert(i);
+                    }
+                    _ => continue,
+                }
             }
         }
     }
 
-    const ID_MAX: usize = 999;
+    //find new ids for all the arbitrary ones
+    let mut id_maps: [AHashMap<ArbitraryId, SpecificId>; 4] = [
+        AHashMap::default(),
+        AHashMap::default(),
+        AHashMap::default(),
+        AHashMap::default(),
+    ];
 
+    const ID_MAX: u16 = 999;
+
+    for obj in &mut objects {
+        for prop in obj.params.values_mut() {
+            let class_index;
+            let ids: Vec<&mut Id>;
+            match prop {
+                ObjParam::Group(g) => {
+                    class_index = 0;
+                    ids = vec![&mut g.id];
+                }
+                ObjParam::GroupList(g) => {
+                    class_index = 0;
+                    ids = g.iter_mut().map(|x| &mut x.id).collect();
+                }
+                ObjParam::Color(g) => {
+                    class_index = 1;
+                    ids = vec![&mut g.id];
+                }
+                ObjParam::Block(g) => {
+                    class_index = 2;
+                    ids = vec![&mut g.id];
+                }
+                ObjParam::Item(g) => {
+                    class_index = 3;
+                    ids = vec![&mut g.id];
+                }
+                _ => continue,
+            }
+            for id in ids {
+                match &id {
+                    Id::Arbitrary(i) => {
+                        *id = Id::Specific(match id_maps[class_index].get(i) {
+                            Some(a) => *a,
+                            None => {
+                                let mut out = None;
+                                for i in 1..10000 {
+                                    if !closed_ids[class_index].contains(&i) {
+                                        out = Some(i);
+                                        closed_ids[class_index].insert(i);
+                                        break;
+                                    }
+                                }
+                                if let Some(id) = out {
+                                    id_maps[class_index].insert(*i, id);
+                                    id
+                                } else {
+                                    return Err(format!(
+                                        "This level exceeds the {} limit!",
+                                        ["group", "color", "block ID", "item ID"][class_index]
+                                    ));
+                                }
+                            }
+                        })
+                    }
+                    _ => continue,
+                }
+            }
+        }
+    }
     for (i, list) in closed_ids.iter_mut().enumerate() {
-        if list.len() > ID_MAX {
+        list.remove(&0);
+        if list.len() > ID_MAX as usize {
             return Err(format!(
                 "This level exceeds the {} limit! ({}/{})",
                 ["group", "color", "block ID", "item ID"][i],
@@ -297,7 +354,7 @@ pub fn append_objects(
 
     //println!("group_map: {:?}", id_maps[0]);
 
-    fn serialize_obj(mut trigger: GdObj) -> String {
+	fn serialize_obj(mut trigger: GdObj) -> String {
         let mut obj_string = String::new();
         match trigger.mode {
             ObjectMode::Object => {
@@ -350,7 +407,6 @@ pub fn append_objects(
                     Some(ObjParam::Bool(b)) => *b,
                     _ => groups.iter().any(|x| x.id != ID::Specific(0)),
                 };
-
                 if spawned {
                     obj_string += "87,1,";
                 }*/

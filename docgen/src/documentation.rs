@@ -182,9 +182,10 @@ pub fn document_lib(path: &str) -> Result<(), RuntimeError> {
             .collect();
         impl_list.sort_by(|a, b| a.0.cmp(&b.0));
         for (typ, _) in impl_list.iter() {
-            let mut type_name = find_key_for_value(&globals.type_ids, *typ)
-                .expect("Implemented type was not found!")
-                .clone();
+            // let mut type_name = find_key_for_value(&globals.type_ids, *typ)
+            //     .expect("Implemented type was not found!")
+            //     .clone();
+			let mut type_name = "<todo! documentation.rs>".to_string();
             let orig_name = type_name.clone();
             find_avaliable_name(&mut output_path.clone(), &mut type_name);
             let path = format!("{}/{}", folder_name, type_name);
@@ -215,9 +216,10 @@ pub fn document_lib(path: &str) -> Result<(), RuntimeError> {
 
     if doc_implementations {
         for (typ, dict) in impl_list.iter() {
-            let type_name = find_key_for_value(&globals.type_ids, *typ)
-                .expect("Implemented type was not found!")
-                .clone();
+            // let type_name = find_key_for_value(&globals.type_ids, *typ)
+            //     .expect("Implemented type was not found!")
+            //     .clone();
+			let type_name = "<todo! documentation.rs>".to_string();
             let (doc_content, sidebar_content) = document_dict(
                 dict,
                 &mut globals,
@@ -380,7 +382,7 @@ fn document_macro(
                         "\n**Returns:**\n{}\n",
                         type_links.get(&t).cloned().unwrap_or_else(|| {
                             String::from("`@")
-                                + &find_key_for_value(&globals.type_ids, t).unwrap().clone()
+                                + "<todo! documentation.rs>"//&find_key_for_value(&globals.type_ids, t).unwrap().clone()
                                 + "`"
                         })
                     );
@@ -425,7 +427,7 @@ fn document_macro(
                         Value::TypeIndicator(t) =>
                             type_links.get(t).cloned().unwrap_or_else(|| {
                                 String::from("`@")
-                                    + &find_key_for_value(&globals.type_ids, *t).unwrap().clone()
+                                    + "<todo! documentation.rs>"//&find_key_for_value(&globals.type_ids, *t).unwrap().clone()
                                     + "`"
                             }),
                         _ => format!(
@@ -478,8 +480,8 @@ fn display_pattern(
     Ok(match pat {
         Pattern::Type(type_id) => type_links.get(type_id).cloned().unwrap_or_else(|| {
             String::from("`@")
-                + find_key_for_value(&globals.type_ids, *type_id)
-                    .expect("Implemented type was not found!")
+                + "<todo! documentation.rs>"//find_key_for_value(&globals.type_ids, *type_id)
+                    //.expect("Implemented type was not found!")
                 + "`"
         }),
         Pattern::Array(a) => {
@@ -560,8 +562,8 @@ fn document_val(
 
     let type_name = type_links.get(&type_id).cloned().unwrap_or_else(|| {
         String::from("`@")
-            + find_key_for_value(&globals.type_ids, type_id)
-                .expect("Implemented type was not found!")
+            + "<todo! documentation.rs>"//find_key_for_value(&globals.type_ids, type_id)
+                //.expect("Implemented type was not found!")
             + "`"
     });
 

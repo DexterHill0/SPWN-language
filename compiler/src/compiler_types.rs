@@ -417,7 +417,7 @@ pub fn execute_macro(
                                 });
                                 return Err(RuntimeError::PatternMismatchError {
                                     pattern: pat.to_str(globals),
-                                    val: val.get_type_str(globals),
+                                    val: val.type_name(),
                                     val_def: globals.get_area(arg_values[i]),
                                     pat_def: globals.get_area(t),
                                     info: arg_info,
@@ -504,7 +504,7 @@ pub fn execute_macro(
                             });
                             return Err(RuntimeError::PatternMismatchError {
                                 pattern: pat.to_str(globals),
-                                val: val.get_type_str(globals),
+                                val: val.type_name(),
                                 val_def: globals.get_area(arg_values[i]),
                                 pat_def: globals.get_area(t),
                                 info: arg_info,
@@ -795,7 +795,7 @@ pub fn eval_dict(
                         a => {
                             return Err(RuntimeError::TypeError {
                                 expected: "dictionary".to_string(),
-                                found: a.get_type_str(globals),
+                                found: a.type_name(),
                                 val_def: globals.get_area(results[expr_index]),
                                 info,
                             })

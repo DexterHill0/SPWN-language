@@ -1,7 +1,9 @@
-use std::any::{TypeId, type_name, Any};
+use std::any::{type_name, Any};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use crate::globals::Globals;
 use crate::value::Value;
@@ -12,22 +14,46 @@ use crate::builtin::types::methods::{Function, Method};
 pub type Error = String;
 
 
+// hashing used instead of `TypeId` as it needs to be an id unique per unique instance rather rather than type, i.e.
+pub type HashId = u64;
+
+trait GetHash {
+    fn hash_id(&self) -> HashId 
+        where Self: Hash + Sized
+    {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        hasher.finish()
+    }
+}
+impl<T> GetHash for T where T: ?Sized + Any {}
+
+fn hash_type_name<T>() -> HashId 
+    where T: Hash,
+{
+    let mut hasher = DefaultHasher::new();
+    hasher.write(&type_name::<T>().as_bytes());
+    hasher.finish()
+}
+
 type StaticMethodType<T> = Arc<dyn Fn(Vec<Value>) -> Result<T, Error> + Send + Sync>;
 type SelfMethodType<T> =
     Arc<dyn Fn(&Instance, Vec<Value>, &mut Globals) -> Result<T, Error> + Send + Sync>;
 
-////////////////////////////////////////////////////////////////////
 
+
+// `SelfMethod` i.e. a instance method (where `self` is the first argument)
 #[derive(Clone)]
 pub struct SelfMethod(SelfMethodType<Value>);
 
 impl SelfMethod {
+
     pub fn new<T, F, Args>(f: F) -> Self
         where
             Args: FromValueList,
             F: Method<T, Args>,
             F::Result: ToValueResult,
-            T: 'static,
+            T: Hash + 'static,
     {
         Self(Arc::new(
             move |instance: &Instance, args: Vec<Value>, globals: &mut Globals| {
@@ -42,10 +68,10 @@ impl SelfMethod {
         ))
     }
 
-    pub fn from_static_method(name: String, method: Option<StaticMethod>) -> Self {
+    pub fn from_static_method(method: StaticMethod) -> Self {
         Self(Arc::new(
             move |_: &Instance, args: Vec<Value>, _: &mut Globals| {
-                method.as_ref().ok_or(format!("Static method '{}' is undefined!", name))?.invoke(args)
+                method.invoke(args)
             },
         ))
     }
@@ -59,13 +85,10 @@ impl SelfMethod {
         self.0(instance, args, globals)
     }
 }
+type SelfMethods = HashMap<String, SelfMethod>;
 
 
-type SelfMethods = HashMap<&'static str, SelfMethod>;
-////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////
-
+// `StaticMethod` where `self` isnt the first argument
 #[derive(Clone)]
 pub struct StaticMethod(StaticMethodType<Value>);
 
@@ -85,12 +108,9 @@ impl StaticMethod {
         self.0(args)
     }
 }
+type StaticMethods = HashMap<String, StaticMethod>;
 
 
-type StaticMethods = HashMap<&'static str, StaticMethod>;
-////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////
 #[derive(Clone)]
 pub struct AttributeGetter(
     Arc<dyn Fn(&Instance, &mut Globals) -> Result<Value, Error> + Send + Sync>,
@@ -99,7 +119,7 @@ pub struct AttributeGetter(
 impl AttributeGetter {
     pub fn new<T, F, R>(f: F) -> Self
         where
-            T: 'static,
+            T: Hash + 'static,
             F: Fn(&T) -> R + Send + Sync + 'static,
             R: ToValueResult,
     {
@@ -115,7 +135,7 @@ impl AttributeGetter {
     }
 }
 
-type Attributes = HashMap<&'static str, AttributeGetter>;
+type Attributes = HashMap<String, AttributeGetter>;
 ////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////
@@ -128,10 +148,14 @@ impl Constructor {
         where
             Args: FromValueList,
             F: Function<Args>,
-            F::Result: Send + Sync + 'static,
+            F::Result: Hash + Send + Sync + 'static,
     {
         Constructor(Arc::new(move |args: Vec<Value>| {
-            Args::from_value_list(&args).map(|args| Instance::new(f.invoke(args)))
+            Args::from_value_list(&args).map(|args| {
+                let s = f.invoke(args);
+                let id = (&s).hash_id();
+                Instance::new(s, id)
+            })
         }))
     }
 
@@ -139,15 +163,12 @@ impl Constructor {
         self.0(args)
     }
 }
-////////////////////////////////////////////////////////////////////
 
 
-
-////////////////////////////////////////////////////////////////////
 #[derive(Clone)]
 pub struct Type {
     pub name: String,
-    pub type_id: TypeId,
+    pub type_id: HashId,
     constructor: Option<Constructor>,
     attributes: Attributes,
     self_methods: SelfMethods,
@@ -164,14 +185,21 @@ impl Type {
         attr.clone().invoke(args)
     }
 
-    pub fn get_self_method(&self, name: &str) -> Option<SelfMethod> {
+    pub fn get_self_method(&self, name: String) -> Result<SelfMethod, Error> {
         // if the self method doesnt exist check if it's a static method as they also can be called from `self.`
-        return if let Some(method) = self.self_methods.get(name).cloned() {
-            Some(method)
-        } else {
-            Some(SelfMethod::from_static_method(name.to_string(), self.static_methods.get(name).cloned()))
+        if let Some(method) = self.self_methods.get(&name).cloned() {
+            return Ok(method)
+        } 
+        if let Some(method) = self.static_methods.get(&name).cloned() {
+            return Ok(SelfMethod::from_static_method(method))
         }
+        Err(format!("Self method '{}' is undefined!", name))
+    }
+}
 
+impl Hash for Type {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(self.name.as_bytes());
     }
 }
 
@@ -181,59 +209,73 @@ pub struct TypeBuilder<T> {
 }
 
 impl<T> TypeBuilder<T> 
-    where T: 'static
+    where 
+        T: 'static,
 {
-    pub fn name(name: &'static str) -> Self {
+    pub fn name<U: ToString>(name: U) -> Self {
+        let hashed = (&name.to_string()).hash_id();
         Self {
             typ: Type {
                 name: name.to_string(),
                 constructor: None,
                 attributes: Attributes::new(),
-                type_id: TypeId::of::<T>(),
+                type_id: hashed,
                 static_methods: StaticMethods::new(),
                 self_methods: SelfMethods::new(),
             },
-            ty: std::marker::PhantomData,
+            ty: PhantomData,
         }
     }
 
-    pub fn add_attribute<F, R>(mut self, name: &'static str, f: F) -> Self
+    pub fn from(typ: Type) -> Self {
+        Self {
+            typ,
+            ty: PhantomData,
+        }
+    }
+
+    pub fn add_attribute<F, R, S>(mut self, name: S, f: F) -> Self
         where
             F: Fn(&T) -> R + Send + Sync + 'static,
             R: ToValue,
-            T: 'static,
+            T: Hash + 'static,
+            S: ToString
     {
-        self.typ.attributes.insert(name, AttributeGetter::new(f));
+        self.typ.attributes.insert(name.to_string(), AttributeGetter::new(f));
         self
     }
     
-    pub fn set_constructor<F, Args>(mut self, f: F) -> Self
+    pub fn set_constructor<F, Args, R>(mut self, f: F) -> Self
         where
-            F: Function<Args, Result = T>,
-            T: Send + Sync,
+            F: Function<Args, Result = R>,
+            T: Hash + Send + Sync,
+            R: Hash + Send + Sync + 'static,
             Args: FromValueList,
     {
         self.typ.constructor = Some(Constructor::new(f));
         self
     }
 
-    pub fn add_static_method<F, Args, R>(mut self, name: &'static str, f: F) -> Self
+    pub fn add_static_method<F, Args, R, S>(mut self, name: S, f: F) -> Self
         where
             F: Function<Args, Result = R>,
             Args: FromValueList,
             R: ToValueResult + 'static,
+            S: ToString
     {
-        self.typ.static_methods.insert(name, StaticMethod::new(f));
+        self.typ.static_methods.insert(name.to_string(), StaticMethod::new(f));
         self
     }
 
-    pub fn add_self_method<F, Args, R>(mut self, name: &'static str, f: F) -> Self
+    pub fn add_self_method<F, Args, R, S>(mut self, name: S, f: F) -> Self
         where
             Args: FromValueList,
             F: Method<T, Args, Result = R>,
             R: ToValueResult + 'static,
+            T: Hash,
+            S: ToString
     {
-        self.typ.self_methods.insert(name, SelfMethod::new(f));
+        self.typ.self_methods.insert(name.to_string(), SelfMethod::new(f));
         self
     }
 
@@ -243,9 +285,12 @@ impl<T> TypeBuilder<T>
 }
 ////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug)]
+
+
+#[derive(Clone)]
 pub struct Instance {
     inner: Arc<dyn Any + Send + Sync>,
+    type_id: HashId,
     debug_type_name: &'static str,
 }
 
@@ -255,36 +300,37 @@ impl Instance {
         if let Some(ctor) = &typ.constructor {
             ctor.invoke(fields)
         } else {
-            return Err(format!("Class '{}' has no constructor!", typ.name));
+               Err(format!("Type '{}' has no constructor!", typ.name))
         }
     }
 
-    pub fn new<T: Send + Sync + 'static>(instance: T) -> Self {
+    pub fn new<T: Send + Sync + 'static>(instance: T, type_id: HashId) -> Self {
         Self {
             inner: Arc::new(instance),
             debug_type_name: type_name::<T>(),
+            type_id,
         }
     }
 
     pub fn instance_of<T>(&self, typ: &Type) -> bool {
-        self.type_id() == typ.type_id
+        self.type_id == typ.type_id
     }
 
-    pub fn class<'a>(&self, globals: &'a Globals) -> Result<&'a Type, Error> {
-        globals.types.get(&self.type_id())
-            .ok_or_else(|| format!("Class '{:?}' is undefined!", self.debug_type_name))
+    pub fn inner_type<'a>(&self, globals: &'a Globals) -> Result<&'a Type, Error> {
+        globals.types.get(&self.type_id)
+            .ok_or_else(|| format!("Type '{:?}' is undefined!", self.debug_type_name))
             
     }
 
     pub fn name<'a>(&self, globals: &'a Globals) -> &'a str {
-        self.class(globals)
-            .map(|class| class.name.as_ref())
+        self.inner_type(globals)
+            .map(|ty| ty.name.as_ref())
             .unwrap_or_else(|_| self.debug_type_name)
     }
 
     pub fn get_attr(&self, name: &str, globals: &mut Globals) -> Result<Value, Error> {
         let attr = self
-            .class(globals)
+            .inner_type(globals)
             .and_then(|c| {
                 c.attributes.get(name).ok_or_else(|| format!("Attribute '{}' is undefined!", name))
             })?
@@ -293,24 +339,24 @@ impl Instance {
 
     }
 
-    pub fn call_self(&self, name: &str, args: Vec<Value>, globals: &mut Globals) -> Result<Value, Error> {
-        let method = self.class(globals).and_then(|c| {
-            c.get_self_method(name).ok_or_else(|| format!("Self method '{}' is undefined!", name))
+    pub fn call_self(&self, name: String, args: Vec<Value>, globals: &mut Globals) -> Result<Value, Error> {
+        let method = self.inner_type(globals).and_then(|c| {
+            c.get_self_method(name.clone())
         })?;
         method.invoke(self, args, globals)
     }
 
-    pub fn downcast<T: 'static>(
+    pub fn downcast<T: Hash + 'static>(
         &self,
         globals: Option<&mut Globals>,
     ) -> Result<&T, Error> {
         let name = globals.as_ref()
             .map(|g| self.name(g).to_owned())
-            .unwrap_or_else(|| self.debug_type_name.to_owned());
+            .expect("tried to get inner type name of instance from a type that is not stored in globals!");
 
         let expected_name = globals.as_ref()
-            .and_then(|g| g.types.get(&TypeId::of::<T>())
-                .map(|class| class.name.clone())
+            .and_then(|g| g.types.get(&hash_type_name::<T>())
+                .map(|ty| ty.name.clone())
             ).unwrap_or_else(|| self.debug_type_name.to_owned());
 
         self.inner
@@ -319,11 +365,7 @@ impl Instance {
             .ok_or_else(|| format!("Expected type '{}', got '{}'!", expected_name, name))
     }
 
-    pub fn raw<T: Send + Sync + 'static>(&self) -> Result<&T, Error> {
+    pub fn raw<T: Hash + Send + Sync + 'static>(&self) -> Result<&T, Error> {
         self.downcast::<T>(None)
-    }
-    
-    pub fn type_id(&self) -> TypeId {
-        self.inner.as_ref().type_id()
     }
 }

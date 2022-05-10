@@ -20,6 +20,16 @@ impl FromValue for bool {
     } 
 }
 
+impl FromValue for String {
+    fn from_value(val: Value) -> Result<Self, Error> {
+        if let Value::Str(s) = val {
+            Ok(s)
+        } else {
+            Err(format!("type '{}' can't be converted to 'string'", val.type_name()))
+        }
+    } 
+}
+
 macro_rules! value_to_num {
     ($($n:ty)*) => {
         $(

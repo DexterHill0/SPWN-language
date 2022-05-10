@@ -169,8 +169,8 @@ pub fn run_all_doc_examples() {
 
     add_tests("std".to_string(), exports, &globals, &mut all_tests);
 
-    for (typ, dict) in implementations {
-        let type_name = value::find_key_for_value(&globals.type_ids, typ).unwrap();
+    for (_typ, dict) in implementations {
+        let type_name = &"<todo! spwn lib.rs>".to_string();//value::find_key_for_value(&globals.type_ids, typ).unwrap();
         for (name, (val, _)) in dict {
             let val = globals.stored_values[val].clone();
             add_tests(

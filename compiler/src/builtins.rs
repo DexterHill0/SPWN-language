@@ -1067,7 +1067,7 @@ $.edit_obj(object, X, 600)
                 a => {
                     return Err(RuntimeError::TypeError {
                         expected: "number or @object_key".to_string(),
-                        found: a.get_type_str(globals),
+                        found: a.type_name(),
                         val_def: globals.get_area(arguments[1]),
                         info,
                     })
@@ -1088,7 +1088,7 @@ $.edit_obj(object, X, 600)
                 if !value.pure_matches_pat(pat, &info, globals, context.clone())? {
                     return Err(RuntimeError::TypeError {
                         expected: pat.to_str(globals),
-                        found: value.get_type_str(globals),
+                        found: value.type_name(),
                         val_def: globals.get_area(arguments[2]),
                         info,
                     });

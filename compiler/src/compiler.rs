@@ -31,6 +31,8 @@ use std::path::PathBuf;
 
 use crate::compiler_types::*;
 
+use crate::builtin::types::classes::{Type, TypeBuilder};
+
 use ariadne::Color as TColor;
 use ariadne::Fmt;
 
@@ -318,7 +320,7 @@ pub fn compile_scope(
                         a => {
                             return Err(RuntimeError::TypeError {
                                 expected: "dictionary or $".to_string(),
-                                found: a.get_type_str(globals),
+                                found: a.type_name(),
                                 val_def: globals.get_area(val),
                                 info,
                             })
@@ -328,7 +330,7 @@ pub fn compile_scope(
             }
 
             TypeDef { name, attr } => {
-                //initialize type
+
                 let already = globals.type_ids.get(name);
                 if let Some(t) = already {
                     if t.1 != info.position {
@@ -343,16 +345,27 @@ pub fn compile_scope(
                         )));
                     }
                 } else {
-                    (*globals).type_id_count += 1;
-                    (*globals)
-                        .type_ids
-                        .insert(name.clone(), (globals.type_id_count, info.position));
-                    if let Some(desc) = attr.get_desc() {
-                        (*globals)
-                            .type_descriptions
-                            .insert(globals.type_id_count, desc);
-                    }
+                    let typ = TypeBuilder::<Type>::name(name)
+                        .set_constructor(|| {
+                            // TODO: add to `globals.stored_value`
+                            // TODO: make Instance into value
+                        })
+                        .finish();
+                    
+                    globals.type_ids.insert(*name, (typ.type_id.clone(), CodeArea::new()));
+                    globals.types.insert(typ.type_id.clone(), typ);
                 }
+                // } else {
+                //     (*globals).type_id_count += 1;
+                //     (*globals)
+                //         .type_ids
+                //         .insert(name.clone(), (globals.type_id_count, info.position));
+                //     if let Some(desc) = attr.get_desc() {
+                //         (*globals)
+                //             .type_descriptions
+                //             .insert(globals.type_id_count, desc);
+                //     }
+                // }
                 //Value::TypeIndicator(globals.type_id_count)
             }
 
@@ -384,7 +397,7 @@ pub fn compile_scope(
                         a => {
                             return Err(RuntimeError::TypeError {
                                 expected: "boolean".to_string(),
-                                found: a.get_type_str(globals),
+                                found: a.type_name(),
                                 val_def: globals.get_area(val),
                                 info,
                             })
@@ -478,7 +491,7 @@ pub fn compile_scope(
                     a => {
                         return Err(RuntimeError::TypeError {
                             expected: "type indicator".to_string(),
-                            found: a.get_type_str(globals),
+                            found: a.type_name(),
                             val_def: globals.get_area(typ),
                             info,
                         })
@@ -506,7 +519,7 @@ pub fn compile_scope(
                             a => {
                                 return Err(RuntimeError::TypeError {
                                     expected: "trigger function or group".to_string(),
-                                    found: a.get_type_str(globals),
+                                    found: a.type_name(),
                                     val_def: globals.get_area(func),
                                     info,
                                 })
@@ -861,7 +874,7 @@ pub fn compile_scope(
                         a => {
                             return Err(RuntimeError::TypeError {
                                 expected: "array, dictionary, string or range".to_string(),
-                                found: a.get_type_str(globals),
+                                found: a.type_name(),
                                 val_def: globals.get_area(val),
                                 info,
                             })
@@ -1364,7 +1377,7 @@ fn dict_destructure_define(
             b => {
                 return Err(RuntimeError::TypeError {
                     expected: "dictionary".to_string(),
-                    found: b.get_type_str(globals),
+                    found: b.type_name(),
                     val_def: globals.get_area(evaled_store),
                     info: info.clone(),
                 })
@@ -1569,7 +1582,7 @@ fn array_destructure_define(
             b => {
                 return Err(RuntimeError::TypeError {
                     expected: "array".to_string(),
-                    found: b.get_type_str(globals),
+                    found: b.type_name(),
                     val_def: globals.get_area(ctx.inner().return_value),
                     info: info.clone(),
                 })

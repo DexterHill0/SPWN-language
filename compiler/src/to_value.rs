@@ -1,6 +1,7 @@
 use crate::value::{Value, Error};
 
-use crate::builtin::types::group::Group;
+use crate::builtin::types::*;
+use crate::builtin::types::classes::Instance;
 
 pub trait ToValue {
     fn to_value(self) -> Value;
@@ -25,6 +26,18 @@ impl ToValue for bool {
 impl ToValue for Group {
     fn to_value(self) -> Value {
         Value::Group(self)
+    }
+}
+
+impl ToValue for TypeIndicator {
+    fn to_value(self) -> Value {
+        Value::TypeIndicator(self)
+    }
+}
+
+impl ToValue for Instance {
+    fn to_value(self) -> Value {
+        Value::Instance(self)
     }
 }
 

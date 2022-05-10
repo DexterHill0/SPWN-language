@@ -15,8 +15,8 @@ use crate::context::FullContext;
 use crate::leveldata::GdObj;
 
 use crate::compiler_types::*;
-use crate::value::*;
-use crate::builtin::types::classes::Type;
+use crate::builtin::types::classes::{Type, Instance, HashId};
+use crate::builtin::types::initialise;
 
 use fnv::FnvHashMap;
 
@@ -26,7 +26,6 @@ use errors::compiler_info::CompilerInfo;
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::any::TypeId;
 
 #[allow(non_snake_case)]
 pub struct Globals<'a> {
@@ -41,11 +40,13 @@ pub struct Globals<'a> {
     pub lowest_y: FnvHashMap<u32, u16>,
     pub stored_values: ValStorage,
     //pub val_id: StoredValue,
-    pub type_ids: FnvHashMap<String, (u16, CodeArea)>,
-    pub type_id_count: u16,
+    // pub type_ids: FnvHashMap<String, (u16, CodeArea)>,
+    // pub type_id_count: u16,
 
-    pub types: FnvHashMap<TypeId, Type>,
-    pub n_type_ids: FnvHashMap<String, TypeId>,
+    pub types: FnvHashMap<HashId, Type>,
+    pub type_ids: FnvHashMap<String, (HashId, CodeArea)>,
+	
+	pub type_instances: FnvHashMap<String, (Instance, CodeArea)>,
 
     pub type_descriptions: FnvHashMap<u16, String>,
 
@@ -130,21 +131,22 @@ impl<'a> Globals<'a> {
     }
 
     pub fn get_type_str(&self, p: StoredValue) -> String {
-        let val = &self.stored_values[p];
-        let typ = match val {
-            Value::Dict(d) => {
-                if let Some(s) = d.get(&self.TYPE_MEMBER_NAME) {
-                    match self.stored_values[*s] {
-                        Value::TypeIndicator(t) => t,
-                        _ => unreachable!(),
-                    }
-                } else {
-                    val.to_num(self)
-                }
-            }
-            _ => val.to_num(self),
-        };
-        find_key_for_value(&self.type_ids, typ).unwrap().clone()
+        // let val = &self.stored_values[p];
+        // let typ = match val {
+        //     Value::Dict(d) => {
+        //         if let Some(s) = d.get(&self.TYPE_MEMBER_NAME) {
+        //             match self.stored_values[*s] {
+        //                 Value::TypeIndicator(t) => t,
+        //                 _ => unreachable!(),
+        //             }
+        //         } else {
+        //             val.to_num(self)
+        //         }
+        //     }
+        //     _ => val.to_num(self),
+        // };
+        // find_key_for_value(&self.type_ids, typ).unwrap().clone()
+		todo!("globals.rs: get_type_str()");
     }
 
     pub fn new(
@@ -244,13 +246,14 @@ impl<'a> Globals<'a> {
 
             lowest_y: FnvHashMap::default(),
 
-            type_ids: FnvHashMap::default(),
+            //type_ids: FnvHashMap::default(),
 
             types: FnvHashMap::default(),
-            n_type_ids: FnvHashMap::default(),
+            type_ids: FnvHashMap::default(),
+			type_instances: FnvHashMap::default(),
 
             prev_imports: FnvHashMap::default(),
-            type_id_count: 0,
+            //type_id_count: 0,
             trigger_order: 0.0,
             uid_counter: 0,
 
@@ -286,35 +289,37 @@ impl<'a> Globals<'a> {
             initial_objects: None,
         };
 
-        let mut add_type = |name: &str, id: u16| {
-            globals
-                .type_ids
-                .insert(String::from(name), (id, CodeArea::new()))
-        };
+		initialise(&mut globals);
 
-        add_type("group", 0);
-        add_type("color", 1);
-        add_type("block", 2);
-        add_type("item", 3);
-        add_type("number", 4);
-        add_type("bool", 5);
-        add_type("trigger_function", 6);
-        add_type("dictionary", 7);
-        add_type("macro", 8);
-        add_type("string", 9);
-        add_type("array", 10);
-        add_type("object", 11);
-        add_type("spwn", 12);
-        add_type("builtin", 13);
-        add_type("type_indicator", 14);
-        add_type("NULL", 15);
-        add_type("trigger", 16);
-        add_type("range", 17);
-        add_type("pattern", 18);
-        add_type("object_key", 19);
-        add_type("epsilon", 20);
+        // let mut add_type = |name: &str, id: u16| {
+        //     globals
+        //         .type_ids
+        //         .insert(String::from(name), (id, CodeArea::new()))
+        // };
 
-        globals.type_id_count = globals.type_ids.len() as u16;
+        // add_type("group", 0);
+        // add_type("color", 1);
+        // add_type("block", 2);
+        // add_type("item", 3);
+        // add_type("number", 4);
+        // add_type("bool", 5);
+        // add_type("trigger_function", 6);
+        // add_type("dictionary", 7);
+        // add_type("macro", 8);
+        // add_type("string", 9);
+        // add_type("array", 10);
+        // add_type("object", 11);
+        // add_type("spwn", 12);
+        // add_type("builtin", 13);
+        // add_type("type_indicator", 14);
+        // add_type("NULL", 15);
+        // add_type("trigger", 16);
+        // add_type("range", 17);
+        // add_type("pattern", 18);
+        // add_type("object_key", 19);
+        // add_type("epsilon", 20);
+
+        // globals.type_id_count = globals.type_ids.len() as u16;
 
         globals
     }
