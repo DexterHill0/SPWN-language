@@ -73,7 +73,7 @@ impl fmt::Display for ObjParam {
                 true => write!(f, "0"),
             },
             ObjParam::Number(n) => {
-                if (n.round() - n).abs() < 0.001 {
+                if n.fract().abs() < 0.001 {
                     write!(f, "{}", *n as i32)
                 } else {
                     write!(f, "{:.1$}", n, 3)

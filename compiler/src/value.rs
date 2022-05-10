@@ -6,7 +6,7 @@ use crate::builtin::types::classes::Instance;
 use errors::compiler_info::CodeArea;
 use errors::compiler_info::CompilerInfo;
 use errors::create_error;
-use fnv::FnvHashSet;
+use ahash::{AHashMap, AHashSet};
 use parser::ast;
 use shared::BreakType;
 use shared::SpwnSource;
@@ -19,7 +19,6 @@ use shared::FileRange;
 
 use internment::LocalIntern;
 
-use fnv::FnvHashMap;
 use std::hash::Hash;
 
 use errors::RuntimeError;
@@ -38,7 +37,7 @@ pub enum Value {
     Number(f64),
     Bool(bool),
     TriggerFunc(TriggerFunction),
-    Dict(FnvHashMap<LocalIntern<String>, StoredValue>),
+    Dict(AHashMap<LocalIntern<String>, StoredValue>),
     Macro(Box<Macro>),
     Str(String),
     Array(Vec<StoredValue>),
@@ -59,7 +58,7 @@ const MAX_DICT_EL_DISPLAY: usize = 10;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Macro {
     pub args: Vec<MacroArgDef>,
-    pub def_variables: FnvHashMap<LocalIntern<String>, StoredValue>,
+    pub def_variables: AHashMap<LocalIntern<String>, StoredValue>,
     pub def_file: LocalIntern<SpwnSource>,
     pub body: Vec<ast::Statement>,
     pub tag: ast::Attribute,
@@ -232,8 +231,8 @@ pub fn default_value_equality(
                 return Ok(());
             }
             // check all keys are equal
-            if d1.keys().cloned().collect::<FnvHashSet<_>>()
-                != d2.keys().cloned().collect::<FnvHashSet<_>>()
+            if d1.keys().cloned().collect::<AHashSet<_>>()
+                != d2.keys().cloned().collect::<AHashSet<_>>()
             {
                 set_return_bool(false, globals, contexts);
                 return Ok(());
@@ -1225,7 +1224,7 @@ pub fn convert_type(
                     _ => {
                         let out: std::result::Result<f64, _> = s.parse();
                         match out {
-                            Ok(n) => Value::Number(n),
+                            Ok(n) if !n.is_nan() && !n.is_infinite() => Value::Number(n),
                             _ => {
                                 
                                 return Err(RuntimeError::CustomError(create_error(
@@ -1271,7 +1270,7 @@ pub fn convert_type(
 
         (Value::Obj(v, _), type_id!(dictionary)) => {
 
-            let mut map = FnvHashMap::default();
+            let mut map = AHashMap::default();
             for (id, param) in v {
                 map.insert(
                     LocalIntern::new(id.to_string()),
@@ -1304,7 +1303,7 @@ pub fn convert_type(
                             }
 
                             ObjParam::Epsilon => {
-                                let mut map = FnvHashMap::<
+                                let mut map = AHashMap::<
                                     LocalIntern<String>,
                                     StoredValue,
                                 >::default(
@@ -1351,7 +1350,7 @@ pub fn convert_type(
 
 //copied from https://stackoverflow.com/questions/59401720/how-do-i-find-the-key-for-a-value-in-a-hashmap
 pub fn find_key_for_value(
-    map: &FnvHashMap<String, (u16, CodeArea)>,
+    map: &AHashMap<String, (u16, CodeArea)>,
     value: u16,
 ) -> Option<&String> {
     map.iter()
@@ -3309,7 +3308,7 @@ impl VariableFuncs for ast::Variable {
                                                         }
 
                                                         ObjParam::Epsilon => {
-                                                            let mut map = FnvHashMap::<
+                                                            let mut map = AHashMap::<
                                                                 LocalIntern<String>,
                                                                 StoredValue,
                                                             >::default(
@@ -3886,7 +3885,7 @@ impl VariableFuncs for ast::Variable {
                                         }
                                     }
                                     None => {
-                                        let mut new_imp = FnvHashMap::default();
+                                        let mut new_imp = AHashMap::default();
                                         new_imp.insert(*m, (value, true));
                                         (*globals).implementations.insert(*t, new_imp);
                                         defined = false;

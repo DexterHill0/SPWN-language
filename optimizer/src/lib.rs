@@ -3,8 +3,7 @@ use compiler::{
     compiler_types::{FunctionId, TriggerOrder},
     leveldata::{self, GdObj, ObjParam},
 };
-use fnv::{FnvHashMap, FnvHashSet};
-use optimize::ToggleGroups;
+use ahash::{AHashMap, AHashSet};
 
 mod dead_code;
 mod group_toggling;
@@ -12,7 +11,7 @@ pub mod optimize;
 mod spawn_optimisation;
 mod trigger_dedup;
 
-pub type Swaps = FnvHashMap<Group, (Group, TriggerOrder)>;
+pub type Swaps = AHashMap<Group, (Group, TriggerOrder)>;
 
 mod obj_ids {
     #![allow(dead_code)]
@@ -64,14 +63,14 @@ pub enum TriggerRole {
 
 #[derive(Debug)]
 pub struct ReservedIds {
-    pub object_groups: FnvHashSet<Id>,
-    pub trigger_groups: FnvHashSet<Id>, // only includes the obj_props::GROUPS prop
+    pub object_groups: AHashSet<Id>,
+    pub trigger_groups: AHashSet<Id>, // only includes the obj_props::GROUPS prop
 
-    pub object_colors: FnvHashSet<Id>,
+    pub object_colors: AHashSet<Id>,
 
-    pub object_blocks: FnvHashSet<Id>,
+    pub object_blocks: AHashSet<Id>,
 
-    pub object_items: FnvHashSet<Id>,
+    pub object_items: AHashSet<Id>,
 }
 
 impl ReservedIds {
@@ -138,8 +137,8 @@ pub struct ObjPtr(usize, usize);
 //                                     triggers      connections in
 #[derive(Default)]
 pub struct TriggerNetwork {
-    map: FnvHashMap<Group, TriggerGang>,
-    connectors: FnvHashMap<Group, FnvHashSet<ObjPtr>>,
+    map: AHashMap<Group, TriggerGang>,
+    connectors: AHashMap<Group, AHashSet<ObjPtr>>,
 }
 
 #[derive(Debug, Clone)]
@@ -185,7 +184,7 @@ impl<'a> std::ops::IndexMut<ObjPtr> for Triggerlist<'a> {
     }
 }
 
-pub fn get_role(obj: &GdObj, _toggle_groups: &ToggleGroups) -> TriggerRole {
+pub fn get_role(obj: &GdObj) -> TriggerRole {
     if let Some(ObjParam::Number(obj_id)) = obj.params.get(&1) {
         let mut hd = false;
         if let Some(ObjParam::Bool(hd_val)) = obj.params.get(&103) {

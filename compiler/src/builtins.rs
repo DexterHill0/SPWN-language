@@ -1,15 +1,15 @@
 //! Defining all native types (and functions?)
 #![allow(unused_assignments)]
 use internment::LocalIntern;
-use shared::StoredValue;
 use shared::SpwnSource;
+use shared::StoredValue;
 
 use crate::compiler_types::*;
 use crate::context::*;
 use crate::globals::Globals;
 use crate::leveldata::*;
 use errors::{create_error, RuntimeError};
-use fnv::FnvHashMap;
+use ahash::AHashMap;
 use parser::ast::ObjectMode;
 
 use std::fs;
@@ -27,7 +27,7 @@ pub use crate::builtin::types::*;
 use std::io::stdout;
 use std::io::Write;
 
-use std::collections::hash_map::{DefaultHasher};
+use std::collections::hash_map::DefaultHasher;
 
 // BUILT IN STD
 use include_dir::{Dir, File};
@@ -49,7 +49,7 @@ pub fn get_lib_file<'a, S: AsRef<Path>>(path: S) -> Option<File<'a>> {
 
 fn get_file<'a>(dir: &'a Dir, path: &Path) -> Option<File<'a>> {
     for file in dir.files {
-        let replaced = &file.path.replace("\\", "/");
+        let replaced = &file.path.replace('\\', "/");
         let file_path = &Path::new(replaced);
 
         if Path::new(file_path) == path {
@@ -64,6 +64,18 @@ fn get_file<'a>(dir: &'a Dir, path: &Path) -> Option<File<'a>> {
     }
 
     None
+}
+
+fn div_zero_check(b: f64, op: &str, builtin: &str, info: &CompilerInfo) -> Result<(), RuntimeError> {
+    if b.abs() == 0.0 {
+        return Err(RuntimeError::BuiltinError {
+            builtin: builtin.to_string(),
+            message: format!("Cannot {} by 0", op),
+            info: info.clone(),
+        })
+    } else {
+        Ok(())
+    }
 }
 
 //use text_io;
@@ -82,11 +94,11 @@ macro_rules! arg_length {
 }
 
 pub fn context_trigger(context: &Context, uid_counter: &mut usize) -> GdObj {
-    let mut params = FnvHashMap::default();
+    let mut params = AHashMap::default();
     params.insert(57, ObjParam::Group(context.start_group));
     (*uid_counter) += 1;
     GdObj {
-        params: FnvHashMap::default(),
+        params: AHashMap::default(),
         func_id: context.func_id,
         mode: ObjectMode::Trigger,
         unique_id: *uid_counter,
@@ -96,6 +108,7 @@ pub fn context_trigger(context: &Context, uid_counter: &mut usize) -> GdObj {
 pub type Id = u16;
 
 impl Value {
+    #[allow(clippy::single_match)]
     pub fn member(
         &self,
         member: LocalIntern<String>,
@@ -171,45 +184,48 @@ impl Value {
                     }
                     _ => (),
                 },
-                Value::Macro(m) => {
-
-                    match member.as_ref().as_str() {
-                        "args" => {
-                            let mut args = vec![];
-                            for MacroArgDef {name, default, pattern, ..} in &m.args {
-                                let mut dict_map = FnvHashMap::default();
-                                dict_map.insert(LocalIntern::new(String::from("name")), store_const_value(
+                Value::Macro(m) => match member.as_ref().as_str() {
+                    "args" => {
+                        let mut args = vec![];
+                        for MacroArgDef {
+                            name,
+                            default,
+                            pattern,
+                            ..
+                        } in &m.args
+                        {
+                            let mut dict_map = AHashMap::default();
+                            dict_map.insert(
+                                LocalIntern::new(String::from("name")),
+                                store_const_value(
                                     Value::Str(name.to_string()),
                                     globals,
                                     context.start_group,
                                     info.position,
-                                ));
-                                if let Some(v) = default {
-                                    dict_map.insert(LocalIntern::new(String::from("default")), *v);
-                                }
-                                if let Some(v) = pattern {
-                                    dict_map.insert(LocalIntern::new(String::from("pattern")), *v);
-                                }
-                                args.push(
-                                    store_const_value(
-                                        Value::Dict(dict_map),
-                                        globals,
-                                        context.start_group,
-                                        info.position,
-                                    )
-                                )
+                                ),
+                            );
+                            if let Some(v) = default {
+                                dict_map.insert(LocalIntern::new(String::from("default")), *v);
                             }
-                            return Some(store_const_value(
-                                Value::Array(args),
+                            if let Some(v) = pattern {
+                                dict_map.insert(LocalIntern::new(String::from("pattern")), *v);
+                            }
+                            args.push(store_const_value(
+                                Value::Dict(dict_map),
                                 globals,
                                 context.start_group,
                                 info.position,
                             ))
                         }
-                        _ => (),
+                        return Some(store_const_value(
+                            Value::Array(args),
+                            globals,
+                            context.start_group,
+                            info.position,
+                        ));
                     }
-
-                }
+                    _ => (),
+                },
                 _ => (),
             };
 
@@ -255,23 +271,14 @@ use std::str::FromStr;
 macro_rules! typed_argument_check {
 
     (($globals:ident, $arg_index:ident, $arguments:ident, $info:ident, $context:ident, $builtin:ident)  ($($arg_name:ident),*)) => {
-        #[allow(unused_variables)]
-        #[allow(unused_mut)]
-        #[allow(unused_parens)]
         let ( $($arg_name),*) = clone_and_get_value($arguments[$arg_index], $globals, $context.start_group, true);
     };
 
     (($globals:ident, $arg_index:ident, $arguments:ident, $info:ident, $context:ident, $builtin:ident) mut ($($arg_name:ident),*)) => {
-        #[allow(unused_variables)]
-        #[allow(unused_mut)]
-        #[allow(unused_parens)]
         let ( $(mut $arg_name),*) = $globals.stored_values[$arguments[$arg_index]].clone();
     };
 
     (($globals:ident, $arg_index:ident, $arguments:ident, $info:ident, $context:ident, $builtin:ident) ($($arg_name:ident),*): $arg_type:ident) => {
-        #[allow(unused_variables)]
-        #[allow(unused_mut)]
-        #[allow(unused_parens)]
 
         let  ( $($arg_name),*) = match clone_and_get_value($arguments[$arg_index], $globals, $context.start_group, true) {
             Value::$arg_type($($arg_name),*) => ($($arg_name),*),
@@ -292,9 +299,6 @@ macro_rules! typed_argument_check {
     };
 
     (($globals:ident, $arg_index:ident, $arguments:ident, $info:ident, $context:ident, $builtin:ident) mut ($($arg_name:ident),*): $arg_type:ident) => {
-        #[allow(unused_variables)]
-        #[allow(unused_mut)]
-        #[allow(unused_parens)]
         let  ( $(mut $arg_name),*) = match $globals.stored_values[$arguments[$arg_index]].clone() {
             Value::$arg_type($($arg_name),*) => ($($arg_name),*),
 
@@ -416,11 +420,11 @@ macro_rules! builtins {
         ];
 
         #[derive(Debug, Clone)]
-        pub struct BuiltinPermissions (FnvHashMap<Builtin, bool>);
+        pub struct BuiltinPermissions (AHashMap<Builtin, bool>);
 
         impl BuiltinPermissions {
             pub fn new() -> Self {
-                let mut map = FnvHashMap::default();
+                let mut map = AHashMap::default();
                 $(
                     map.insert(Builtin::$variant, $safe);
                 )*
@@ -454,6 +458,8 @@ macro_rules! builtins {
             contexts: &mut FullContext,
         ) -> Result<(), RuntimeError> {
             #![allow(unused_variables)]
+            #![allow(unused_mut)]
+            #![allow(unused_parens)]
             if !$globals.permissions.is_allowed(func) {
                 if !$globals.permissions.is_safe(func) {
                     return Err(RuntimeError::BuiltinError {
@@ -787,7 +793,7 @@ builtins! {
                     }
             };
 
-            let mut output_map = FnvHashMap::default();
+            let mut output_map = AHashMap::default();
 
             let response_status = store_const_value(
                 Value::Number(
@@ -799,7 +805,7 @@ builtins! {
             );
 
             let response_headermap = response.headers();
-            let mut response_headers_value = FnvHashMap::default();
+            let mut response_headers_value = AHashMap::default();
             for (name, value) in response_headermap.iter() {
                 let header_value = store_const_value(
                     Value::Str(String::from(value.to_str().expect("Couldn't parse return header value"))),
@@ -923,7 +929,7 @@ $.add(obj {
             };
         }
 
-        let mut obj_map = FnvHashMap::<u16, ObjParam>::default();
+        let mut obj_map = AHashMap::<u16, ObjParam>::default();
 
         for p in obj {
             obj_map.insert(p.0, p.1.clone());
@@ -1491,7 +1497,7 @@ $.random(1..11) // returns a random integer between 1 and 10
                                     Value::Array(arr)
                                 },
                                 serde_json::Value::Object(x) => {
-                                    let mut dict: FnvHashMap<LocalIntern<String>, StoredValue> = FnvHashMap::default();
+                                    let mut dict: AHashMap<LocalIntern<String>, StoredValue> = AHashMap::default();
                                     for (key, value) in x {
                                         dict.insert(LocalIntern::new(key), store_const_value(parse_json_value(value, globals, context, info), globals, context.start_group, info.position));
                                     }
@@ -1539,7 +1545,7 @@ $.random(1..11) // returns a random integer between 1 and 10
                                     Value::Array(arr)
                                 },
                                 toml::Value::Table(x) => {
-                                    let mut dict: FnvHashMap<LocalIntern<String>, StoredValue> = FnvHashMap::default();
+                                    let mut dict: AHashMap<LocalIntern<String>, StoredValue> = AHashMap::default();
                                     for (key, value) in x {
                                         dict.insert(LocalIntern::new(key), store_const_value(parse_toml_value(value, globals, context, info), globals, context.start_group, info.position));
                                     }
@@ -1586,7 +1592,7 @@ $.random(1..11) // returns a random integer between 1 and 10
                                     Value::Array(arr)
                                 },
                                 serde_yaml::Value::Mapping(x) => {
-                                    let mut dict: FnvHashMap<LocalIntern<String>, StoredValue> = FnvHashMap::default();
+                                    let mut dict: AHashMap<LocalIntern<String>, StoredValue> = AHashMap::default();
                                     for (key, value) in x.iter() {
                                         dict.insert(LocalIntern::new(key.as_str().unwrap().to_string()), store_const_value(parse_yaml_value(value, globals, context, info), globals, context.start_group, info.position));
                                     }
@@ -1675,7 +1681,7 @@ $.random(1..11) // returns a random integer between 1 and 10
     [MetaData] #[safe = false, desc = "Returns the metadata of a file or directory in the local file system", example = "$.metadata(\"file.txt\")"] fn metadata((path): Str) {
         match fs::metadata(path) {
             Ok(meta) => {
-                let mut dict: FnvHashMap<LocalIntern<String>, StoredValue> = FnvHashMap::default();
+                let mut dict: AHashMap<LocalIntern<String>, StoredValue> = AHashMap::default();
                 let mut store = |value| store_const_value(value, globals, context.start_group, info.position);
                 dict.insert(LocalIntern::new(String::from("size")), store(Value::Number(meta.len() as f64)));
                 dict.insert(LocalIntern::new(String::from("modified")), store(Value::Number(meta.modified().unwrap().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64())));
@@ -1968,7 +1974,7 @@ $.assert(name_age == {
                             }
                             if !found { continue }
 
-                            let mut match_map = FnvHashMap::default();
+                            let mut match_map = AHashMap::default();
                             match_map.insert(
                                 LocalIntern::new("range".to_string()),
                                 store_const_value(Value::Array(range), globals, context.start_group, info.position),
@@ -2153,9 +2159,15 @@ $.assert(name_age == {
     }
 
     [DividedByOp] #[safe = true, desc = "Default implementation of the `/` operator", example = "$._divided_by_(64, 8)"]
-    fn _divided_by_((a): Number, (b): Number) { Value::Number(a / b) }
+    fn _divided_by_((a): Number, (b): Number) {
+        div_zero_check(b, "divide", &builtin, &info)?;
+        Value::Number(a / b)
+    }
     [IntdividedByOp] #[safe = true, desc = "Default implementation of the `/%` operator", example = "$._intdivided_by_(64, 8)"]
-    fn _intdivided_by_((a): Number, (b): Number) { Value::Number((a / b).floor()) }
+    fn _intdivided_by_((a): Number, (b): Number) {
+        div_zero_check(b, "divide", &builtin, &info)?;
+        Value::Number((a / b).floor())
+    }
     [TimesOp] #[safe = true, desc = "Default implementation of the `*` operator", example = "$._times_(8, 8)"]
     fn _times_((a), (b): Number) {
         match a {
@@ -2166,13 +2178,13 @@ $.assert(name_age == {
                     Value::Str(a.repeat(number as usize))
                 } else {
                     return Err(RuntimeError::BuiltinError {
-                        builtin: builtin,
+                        builtin,
                         message: format!(
                             "Expected {}, found {}",
                             "a positive number",
                             b,
                         ),
-                        info: info,
+                        info,
                     })
                 }
             },
@@ -2201,7 +2213,7 @@ $.assert(name_age == {
                         (globals.get_area(arguments[1]), &format!("Value defined as {} here", globals.get_type_str(arguments[1]))),
                         (
                             info.position,
-                            &format!("Expected @number and @number or @string and @number, found @{} and @{}", globals.get_type_str(arguments[0]), globals.get_type_str(arguments[1])),
+                            &format!("Expected @number and @number, @string and @number or @array and @number, found @{} and @{}", globals.get_type_str(arguments[0]), globals.get_type_str(arguments[1])),
                         ),
                     ],
                     None,
@@ -2211,7 +2223,10 @@ $.assert(name_age == {
         }
     }
     [ModOp] #[safe = true, desc = "Default implementation of the `%` operator", example = "$._mod_(70, 8)"]
-    fn _mod_((a): Number, (b): Number) { Value::Number(a.rem_euclid(b)) }
+    fn _mod_((a): Number, (b): Number) {
+        div_zero_check(b, "modulo", &builtin, &info)?;
+        Value::Number(a.rem_euclid(b))
+    }
     [PowOp] #[safe = true, desc = "Default implementation of the `^` operator", example = "$._pow_(8, 2)"]
     fn _pow_((a): Number, (b): Number) { Value::Number(a.powf(b)) }
     [PlusOp] #[safe = true, desc = "Default implementation of the `+` operator", example = "$._plus_(32, 32)"]
@@ -2429,7 +2444,8 @@ $.assert(name_age == {
         }
         Value::Null
     }
-    [MultiplyOp] #[safe = true, desc = "Default implementation of the `*=` operator", example = "let val = 5\n$._multiply_(val, 10)\n$.assert(val == 50)"]        fn _multiply_(mut (a), (b): Number)         {
+    [MultiplyOp] #[safe = true, desc = "Default implementation of the `*=` operator", example = "let val = 5\n$._multiply_(val, 10)\n$.assert(val == 50)"]
+    fn _multiply_(mut (a), (b): Number)         {
         match &mut a {
             Value::Number(a) => *a *= b,
             Value::Str(a) => {
@@ -2438,13 +2454,13 @@ $.assert(name_age == {
                     *a = a.repeat(number as usize)
                 } else {
                     return Err(RuntimeError::BuiltinError {
-                        builtin: builtin,
+                        builtin,
                         message: format!(
                             "Expected {}, found {}",
                             "a positive number",
                             b,
                         ),
-                        info: info,
+                        info,
                     })
                 }
             },
@@ -2468,13 +2484,25 @@ $.assert(name_age == {
         Value::Null
     }
     [DivideOp] #[safe = true, desc = "Default implementation of the `/=` operator", example = "let val = 9\n$._divide_(val, 3)\n$.assert(val == 3)"]
-    fn _divide_(mut (a): Number, (b): Number) { a /= b; Value::Null }
+    fn _divide_(mut (a): Number, (b): Number) {
+        div_zero_check(b, "divide", &builtin, &info)?;
+        a /= b;
+        Value::Null
+    }
     [IntdivideOp] #[safe = true, desc = "Default implementation of the `/%=` operator", example = "let val = 10\n$._intdivide_(val, 3)\n$.assert(val == 3)"]
-    fn _intdivide_(mut (a): Number, (b): Number) { a /= b; a = a.floor(); Value::Null }
+    fn _intdivide_(mut (a): Number, (b): Number) {
+        div_zero_check(b, "divide", &builtin, &info)?;
+        a /= b; a = a.floor();
+        Value::Null
+    }
     [ExponateOp] #[safe = true, desc = "Default implementation of the `^=` operator", example = "let val = 3\n$._exponate_(val, 3)\n$.assert(val == 27)"]
     fn _exponate_(mut (a): Number, (b): Number) { a = a.powf(b); Value::Null }
     [ModulateOp] #[safe = true, desc = "Default implementation of the `%=` operator", example = "let val = 10\n$._modulate_(val, 3)\n$.assert(val == 1)"]
-    fn _modulate_(mut (a): Number, (b): Number) { a = a.rem_euclid(b); Value::Null }
+    fn _modulate_(mut (a): Number, (b): Number) {
+        div_zero_check(b, "modulo", &builtin, &info)?;
+        a = a.rem_euclid(b);
+        Value::Null
+    }
 
     [EitherOp] #[safe = true, desc = "Default implementation of the `|` operator", example = "$._either_(@number, @counter)"]
     fn _either_((a), (b)) {
